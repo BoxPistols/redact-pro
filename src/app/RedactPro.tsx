@@ -86,7 +86,7 @@ const EXPORT_FORMATS=[
   {id:"md",label:"Markdown",ext:".md",icon:"M"},
   {id:"csv",label:"CSV",ext:".csv",icon:"C"},
   {id:"xlsx",label:"Excel",ext:".xlsx",icon:"X"},
-  {id:"pdf",label:"PDF",ext:".pdf",icon:"P"},
+  {id:"pdf",label:"PDF (印刷)",ext:"",icon:"P"},
   {id:"docx",label:"Word",ext:".doc",icon:"W"},
 ];
 
@@ -1096,12 +1096,12 @@ function generateExport(rawContent,format,baseName){
     case"md":return{data:bom+`# ${baseName}\n\n> Exported: ${ts}\n\n---\n\n${content}`,mime:"text/markdown;charset=utf-8",name:baseName+".md"};
     case"csv":{const rows=content.split("\n").map((l,i)=>`"${i+1}","${l.replace(/"/g,'""')}"`);return{data:bom+"行番号,内容\n"+rows.join("\n"),mime:"text/csv;charset=utf-8",name:baseName+".csv"};}
     case"xlsx":{const lines=content.split("\n");const ws=XLSX.utils.aoa_to_sheet(lines.map((l,i)=>[i+1,l]));ws["!cols"]=[{wch:6},{wch:100}];const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"マスキング済み");const out=XLSX.write(wb,{type:"base64",bookType:"xlsx"});return{dataUri:"data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,"+out,name:baseName+".xlsx"};}
-    case"pdf":{const esc=content.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");const html=`<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><title>${baseName}</title><style>@media print{@page{margin:15mm}}body{font-family:'Noto Sans JP','Hiragino Sans',sans-serif;font-size:11pt;line-height:1.8;color:#222;max-width:750px;margin:20px auto;padding:20px}h1{font-size:14pt;border-bottom:2px solid #333;padding-bottom:6px;margin-bottom:16px}pre{white-space:pre-wrap;word-break:break-word;font-family:inherit}.meta{font-size:9pt;color:#888;margin-bottom:12px}.rd{background:#fee;color:#c33;padding:1px 4px;border-radius:3px;font-weight:bold}</style></head><body><h1>${baseName}</h1><div class="meta">出力日時: ${ts}</div><pre>${esc.replace(/\[([^\]]*非公開[^\]]*|[^\]]*Redacted[^\]]*)\]/g,'<span class="rd">[$1]</span>')}</pre><script>window.onload=function(){window.print()}<\/script></body></html>`;return{data:html,mime:"text/html;charset=utf-8",name:baseName+"_print.html",isPrintPdf:true};}
+    case"pdf":{const esc=content.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");const html=`<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><title>${baseName}</title><style>@media print{@page{margin:15mm}}body{font-family:'Noto Sans JP','Hiragino Sans',sans-serif;font-size:11pt;line-height:1.8;color:#222;max-width:750px;margin:20px auto;padding:20px}h1{font-size:14pt;border-bottom:2px solid #333;padding-bottom:6px;margin-bottom:16px}pre{white-space:pre-wrap;word-break:break-word;font-family:inherit}.meta{font-size:9pt;color:#888;margin-bottom:12px}.rd{background:#fee;color:#c33;padding:1px 4px;border-radius:3px;font-weight:bold}</style></head><body><h1>${baseName}</h1><div class="meta">出力日時: ${ts}</div><pre>${esc.replace(/\[([^\]]*非公開[^\]]*|[^\]]*Redacted[^\]]*)\]/g,'<span class="rd">[$1]</span>')}</pre><script>window.onload=function(){window.print();setTimeout(()=>{window.close()},1000)}<\/script></body></html>`;return{data:html,mime:"text/html;charset=utf-8",name:baseName+".html",isPrintPdf:true};}
     case"docx":{const esc=content.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br>");const doc=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><style>body{font-family:'Noto Sans JP','MS Gothic',sans-serif;font-size:10.5pt;line-height:1.8;color:#222}h1{font-size:14pt;border-bottom:1.5pt solid #333;padding-bottom:4pt}.rd{background:#fee;color:#c33;font-weight:bold}</style></head><body><h1>${baseName}</h1><p style="font-size:8pt;color:#888">出力: ${ts}</p><div>${esc.replace(/\[([^\]]*非公開[^\]]*|[^\]]*Redacted[^\]]*)\]/g,'<span class="rd">[$1]</span>')}</div></body></html>`;return{data:bom+doc,mime:"application/msword;charset=utf-8",name:baseName+".doc"};}
     default:return{data:content,mime:"text/plain;charset=utf-8",name:baseName+".txt"};
   }
 }
-function triggerDownload(ex){try{const a=document.createElement("a");a.href=ex.dataUri||("data:"+ex.mime+","+encodeURIComponent(ex.data));a.download=ex.name;document.body.appendChild(a);a.click();document.body.removeChild(a);}catch(e){}}
+function triggerDownload(ex){try{if(ex.isPrintPdf){const blob=new Blob([ex.data],{type:ex.mime});const url=URL.createObjectURL(blob);const win=window.open(url,"_blank");if(win)win.focus();return;}const a=document.createElement("a");a.href=ex.dataUri||("data:"+ex.mime+","+encodeURIComponent(ex.data));a.download=ex.name;document.body.appendChild(a);a.click();document.body.removeChild(a);}catch(e){}}
 
 // ═══ UI primitives ═══
 function Badge({children,color,bg,style:sx}){return <span style={{display:"inline-flex",alignItems:"center",gap:4,padding:"3px 10px",borderRadius:6,fontSize:11,fontWeight:600,color,background:bg,whiteSpace:"nowrap",...sx}}>{children}</span>;}
@@ -1399,17 +1399,12 @@ function DesignExportModal({text,apiKey,model,onClose}){
   const htmlContent=useMemo(()=>generatePDFHTML(editText,fontType),[editText,fontType]);
 
   const handleExport=()=>{
-    // Download as self-printing HTML (opens browser print dialog automatically)
-    const printHTML=htmlContent.replace("</body>",`<script>window.onload=function(){setTimeout(function(){window.print()},500)}<\/script></body>`);
-    const blob=new Blob(["\uFEFF"+printHTML],{type:"text/html;charset=utf-8"});
+    // Open as self-printing HTML in a new tab
+    const printHTML=htmlContent.replace("</body>",`<script>window.onload=function(){window.print();setTimeout(()=>{window.close()},1000)}<\/script></body>`);
+    const blob=new Blob([printHTML],{type:"text/html;charset=utf-8"});
     const url=URL.createObjectURL(blob);
-    const a=document.createElement("a");
-    a.href=url;
-    a.download="resume_print.html";
-    a.style.display="none";
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},100);
+    const win=window.open(url,"_blank");
+    if(win)win.focus();
   };
 
   const handleDownloadHTML=()=>{
@@ -1492,11 +1487,11 @@ function DesignExportModal({text,apiKey,model,onClose}){
           />
           {/* Actions */}
           <div style={{padding:12,borderTop:`1px solid ${T.border}`,display:"flex",flexDirection:"column",gap:6,flexShrink:0}}>
-            <Btn onClick={handleExport} style={{width:"100%",borderRadius:10,fontSize:13,background:"#222"}}>
-              📄 PDF保存（印刷ダイアログ）
+            <Btn onClick={handleExport} style={{width:"100%",borderRadius:10,fontSize:13,background:"#222",gap:6}}>
+              🖨️ PDFとして印刷・保存
             </Btn>
-            <div style={{fontSize:10,color:T.text3,textAlign:"center",lineHeight:1.4,padding:"0 4px"}}>
-              HTMLファイルをダウンロード → ブラウザで開く → 印刷 → PDF保存
+            <div style={{fontSize:10,color:T.text3,textAlign:"center",lineHeight:1.4,padding:"0 4px",display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
+              <span>🖨️</span> 別タブで開き、ブラウザの印刷ダイアログから「PDFとして保存」を選択してください
             </div>
             <div style={{display:"flex",gap:6}}>
               <Btn variant="ghost" onClick={handleDownloadWord} style={{flex:1,borderRadius:8,fontSize:11,padding:"9px 8px"}}>
@@ -1561,12 +1556,13 @@ function PreviewModal({title,content,baseName,onClose}){
                 <button key={f.id} onClick={()=>setFmt(f.id)} style={{padding:"5px 12px",borderRadius:7,border:`1px solid ${fmt===f.id?T.accent:T.border}`,background:fmt===f.id?T.accentDim:"transparent",color:fmt===f.id?T.accent:T.text3,fontSize:11,fontWeight:fmt===f.id?600:400,cursor:"pointer",fontFamily:T.font,transition:"all .15s",display:"flex",alignItems:"center",gap:4}}>
                   <span style={{width:14,height:14,borderRadius:3,background:fmt===f.id?T.accent:T.border,color:fmt===f.id?"#fff":T.text3,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:8,fontWeight:700}}>{f.icon}</span>
                   {f.label}
+                  {f.id==="pdf"&&<span title="ブラウザの印刷機能を使用してPDFを生成します" style={{fontSize:12,marginLeft:-2,opacity:0.8}}>🖨️</span>}
                 </button>
               ))}
             </div>
           </div>
           <div style={{display:"flex",gap:8,justifyContent:"flex-end",alignItems:"center"}}>
-            {fmt==="pdf"&&<span style={{fontSize:10,color:T.amber,marginRight:"auto"}}>* 印刷ダイアログからPDF保存</span>}
+            {fmt==="pdf"&&<span style={{fontSize:10,color:T.amber,marginRight:"auto",display:"flex",alignItems:"center",gap:4}}><span style={{fontSize:12}}>🖨️</span> 印刷ダイアログから「PDFとして保存」を選択してください</span>}
             <Btn variant="ghost" onClick={onClose} style={{padding:"7px 16px",fontSize:12,borderRadius:8}}>閉じる</Btn>
             <Btn variant="ghost" onClick={handleCopy} style={{padding:"7px 16px",fontSize:12,borderRadius:8}}>{copied?"\u2713 コピー済":"コピー"}</Btn>
             <Btn onClick={handleDownload} style={{padding:"7px 16px",fontSize:12,borderRadius:8}}>{curFmt?.label} で保存</Btn>
