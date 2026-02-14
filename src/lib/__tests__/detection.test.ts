@@ -30,9 +30,7 @@ describe('normalizeText', () => {
   })
 
   it('handles mixed content', () => {
-    expect(normalizeText('電話：０９０−１２３４−５６７８')).toBe(
-      '電話：090−1234−5678'
-    )
+    expect(normalizeText('電話：０９０−１２３４−５６７８')).toBe('電話：090−1234−5678')
   })
 })
 
@@ -260,11 +258,38 @@ describe('detectAll', () => {
 describe('mergeDetections', () => {
   it('merges without duplicates', () => {
     const base: Detection[] = [
-      { id: '1', type: 'email', label: 'Email', category: 'contact', value: 'a@b.com', source: 'regex', confidence: 0.95, enabled: true },
+      {
+        id: '1',
+        type: 'email',
+        label: 'Email',
+        category: 'contact',
+        value: 'a@b.com',
+        source: 'regex',
+        confidence: 0.95,
+        enabled: true,
+      },
     ]
     const ai: Detection[] = [
-      { id: '2', type: 'email', label: 'Email', category: 'contact', value: 'a@b.com', source: 'ai', confidence: 0.9, enabled: true },
-      { id: '3', type: 'name_ai', label: 'Name', category: 'name', value: '田中太郎', source: 'ai', confidence: 0.95, enabled: true },
+      {
+        id: '2',
+        type: 'email',
+        label: 'Email',
+        category: 'contact',
+        value: 'a@b.com',
+        source: 'ai',
+        confidence: 0.9,
+        enabled: true,
+      },
+      {
+        id: '3',
+        type: 'name_ai',
+        label: 'Name',
+        category: 'name',
+        value: '田中太郎',
+        source: 'ai',
+        confidence: 0.95,
+        enabled: true,
+      },
     ]
     const merged = mergeDetections(base, ai)
     expect(merged).toHaveLength(2) // a@b.com deduped, 田中太郎 added

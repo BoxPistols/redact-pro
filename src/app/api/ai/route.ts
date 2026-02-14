@@ -106,7 +106,7 @@ function extractOpenAIText(body: OpenAIResponseBody): string {
 async function fetchWithTimeout(
   url: string,
   init: RequestInit,
-  timeoutMs: number = AI_REQUEST_TIMEOUT_MS
+  timeoutMs: number = AI_REQUEST_TIMEOUT_MS,
 ): Promise<Response> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
@@ -135,7 +135,7 @@ export async function POST(request: NextRequest) {
   if (!provider || !model || !messages) {
     return NextResponse.json(
       { error: 'Missing required fields: provider, model, messages' },
-      { status: 400 }
+      { status: 400 },
     )
   }
 
@@ -192,7 +192,7 @@ export async function POST(request: NextRequest) {
         const e = await res.text().catch(() => '')
         return NextResponse.json(
           { error: `OpenAI ${res.status}: ${e.slice(0, 200)}` },
-          { status: 502 }
+          { status: 502 },
         )
       }
 
@@ -234,22 +234,21 @@ export async function POST(request: NextRequest) {
             contents: [{ parts }],
             generationConfig: { maxOutputTokens: maxTokens },
           }),
-        }
+        },
       )
 
       if (!res.ok) {
         const e = await res.text().catch(() => '')
         return NextResponse.json(
           { error: `Gemini ${res.status}: ${e.slice(0, 200)}` },
-          { status: 502 }
+          { status: 502 },
         )
       }
 
       const d = await res.json()
       const text =
-        d.candidates?.[0]?.content?.parts
-          ?.map((p: { text?: string }) => p.text || '')
-          .join('') || ''
+        d.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text || '').join('') ||
+        ''
       return NextResponse.json({ text })
     }
 
@@ -281,7 +280,7 @@ export async function POST(request: NextRequest) {
         const e = await res.text().catch(() => '')
         return NextResponse.json(
           { error: `Claude ${res.status}: ${e.slice(0, 200)}` },
-          { status: 502 }
+          { status: 502 },
         )
       }
 
@@ -297,8 +296,10 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
       return NextResponse.json(
-        { error: `AI APIリクエストがタイムアウトしました (${Math.floor(AI_REQUEST_TIMEOUT_MS / 1000)}s)` },
-        { status: 504 }
+        {
+          error: `AI APIリクエストがタイムアウトしました (${Math.floor(AI_REQUEST_TIMEOUT_MS / 1000)}s)`,
+        },
+        { status: 504 },
       )
     }
     const msg = err instanceof Error ? err.message : 'Unknown error'

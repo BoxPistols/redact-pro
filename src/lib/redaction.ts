@@ -32,11 +32,7 @@ export interface RedactionOptions {
   nameInitial?: boolean
 }
 
-export function applyRedaction(
-  text: string,
-  dets: Detection[],
-  opts?: RedactionOptions
-): string {
+export function applyRedaction(text: string, dets: Detection[], opts?: RedactionOptions): string {
   const keepPref = opts?.keepPrefecture || false
   const nameInit = opts?.nameInitial || false
   const readingMap = nameInit ? buildReadingMap(text) : null

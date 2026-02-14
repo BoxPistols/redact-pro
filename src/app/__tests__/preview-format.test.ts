@@ -65,4 +65,3 @@ describe('generatePDFHTML', () => {
     expect(html).toContain('class="hr"')
   })
 })
-

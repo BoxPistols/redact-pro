@@ -782,25 +782,90 @@ function renderTextWithDetectionAnchors(text,dets,opts,showRedacted,focusId,focu
 function detectEncoding(b){if(b.length>=3&&b[0]===0xef&&b[1]===0xbb&&b[2]===0xbf)return"utf-8";if(b.length>=2&&b[0]===0xff&&b[1]===0xfe)return"utf-16le";let sj=0,eu=0,u8=0;for(let i=0;i<Math.min(b.length,10000);i++){const v=b[i];if(v<=0x7f)continue;if(v>=0xc0&&v<=0xdf&&i+1<b.length&&(b[i+1]&0xc0)===0x80){u8+=2;i++;continue;}if(v>=0xe0&&v<=0xef&&i+2<b.length&&(b[i+1]&0xc0)===0x80&&(b[i+2]&0xc0)===0x80){u8+=3;i+=2;continue;}if(v>=0xa1&&v<=0xfe&&i+1<b.length&&b[i+1]>=0xa1&&b[i+1]<=0xfe){eu+=2;i++;continue;}if(((v>=0x81&&v<=0x9f)||(v>=0xe0&&v<=0xfc))&&i+1<b.length){const b2=b[i+1];if((b2>=0x40&&b2<=0x7e)||(b2>=0x80&&b2<=0xfc)){sj+=2;i++;continue;}}}if(sj===0&&eu===0&&u8===0)return"utf-8";if(u8>=sj&&u8>=eu)return"utf-8";return sj>=eu?"shift_jis":"euc-jp";}
 function decodeText(ab){const b=new Uint8Array(ab);const e=detectEncoding(b);return{text:new TextDecoder(e,{fatal:false}).decode(b),encoding:e};}
 function readBuf(f){return new Promise((r,j)=>{const x=new FileReader();x.onload=()=>r(x.result);x.onerror=j;x.readAsArrayBuffer(f);});}
-async function loadPdfJs(){if(window.pdfjsLib)return;await new Promise((r,j)=>{const s=document.createElement("script");s.src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";s.onload=r;s.onerror=j;document.head.appendChild(s);});window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";}
-async function parsePDF(f){
-  const ab=await readBuf(f);await loadPdfJs();
+
+// PDF parsing watchdogs (prevents "never-ending" extraction)
+const PDF_PARSE_TIMEOUT_MS=60_000; // total wall time
+const PDFJS_LOAD_TIMEOUT_MS=15_000; // pdf.js script load
+const PDF_DOCUMENT_TIMEOUT_MS=25_000; // getDocument() phase
+const PDF_PAGE_TIMEOUT_MS=20_000; // getPage()/getTextContent() phase per page
+
+function withTimeout(p,timeoutMs,msg,onTimeout){
+  const ms=typeof timeoutMs==="number"&&timeoutMs>0?timeoutMs:0;
+  if(!ms)return p;
+  let t=null;
+  return new Promise((resolve,reject)=>{
+    t=setTimeout(()=>{
+      try{onTimeout&&onTimeout();}catch{}
+      reject(new Error(msg));
+    },ms);
+    Promise.resolve(p).then(
+      (v)=>{if(t)clearTimeout(t);resolve(v);},
+      (e)=>{if(t)clearTimeout(t);reject(e);}
+    );
+  });
+}
+
+async function loadPdfJs(opts){
+  if(window.pdfjsLib)return;
+  const timeoutMs=opts?.timeoutMs??PDFJS_LOAD_TIMEOUT_MS;
+  const onProgress=opts?.onProgress;
+  if(onProgress)onProgress("PDF: PDF.js読込中...");
+  await withTimeout(new Promise((r,j)=>{
+    const s=document.createElement("script");
+    s.src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+    s.async=true;
+    s.onload=()=>r(true);
+    s.onerror=()=>j(new Error("PDF.jsの読み込みに失敗しました"));
+    document.head.appendChild(s);
+  }),timeoutMs,`PDF.jsの読み込みがタイムアウトしました（${Math.round(timeoutMs/1000)}秒）`);
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+}
+
+async function parsePDF(f,opts){
+  const onProgress=opts?.onProgress;
+  const totalTimeoutMs=opts?.timeoutMs??PDF_PARSE_TIMEOUT_MS;
+  const deadline=Date.now()+totalTimeoutMs;
+  const sec=Math.round(totalTimeoutMs/1000);
+  const remain=()=>Math.max(0,deadline-Date.now());
+  const cap=(ms)=>Math.min(ms,remain());
+  const timeUp=()=>remain()<=0;
+
+  const abortMsg=`PDFのテキスト抽出がタイムアウトしました（最大${sec}秒）。\n\n対処:\n- PDFが大きい/破損/保護されている可能性があります\n- 画像PDFの場合は「AI OCR」を有効にして再実行してください`;
+
+  if(onProgress)onProgress("PDF: ファイル読込中...");
+  const ab=await withTimeout(readBuf(f),cap(totalTimeoutMs),abortMsg);
+  if(timeUp())throw new Error(abortMsg);
+  await loadPdfJs({timeoutMs:cap(PDFJS_LOAD_TIMEOUT_MS),onProgress});
   // Clone buffer before pdf.js consumes it (ArrayBuffer gets detached)
   const abCopy=ab.slice(0);
   // Try with CMap for better Japanese text extraction, fall back without
-  let pdf;
+  let pdf=null;
+  let loadingTask=null;
+  const destroy=()=>{
+    try{loadingTask?.destroy?.();}catch{}
+    try{pdf?.destroy?.();}catch{}
+  };
   try{
-    pdf=await window.pdfjsLib.getDocument({data:ab,cMapUrl:"https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/",cMapPacked:true}).promise;
+    if(onProgress)onProgress("PDF: 読み込み中（CMap）...");
+    loadingTask=window.pdfjsLib.getDocument({data:ab,cMapUrl:"https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/",cMapPacked:true});
+    pdf=await withTimeout(loadingTask.promise,cap(PDF_DOCUMENT_TIMEOUT_MS),abortMsg,()=>{try{loadingTask.destroy();}catch{}});
   }catch(e){
     console.warn("PDF with CMap failed, retrying without:",e);
     const ab2=abCopy.slice(0);
-    pdf=await window.pdfjsLib.getDocument({data:ab2}).promise;
+    if(onProgress)onProgress("PDF: 読み込み再試行（通常）...");
+    loadingTask=window.pdfjsLib.getDocument({data:ab2});
+    pdf=await withTimeout(loadingTask.promise,cap(PDF_DOCUMENT_TIMEOUT_MS),abortMsg,()=>{try{loadingTask.destroy();}catch{}});
   }
   let fullText="";
   const sparsePages=[];
   for(let i=1;i<=pdf.numPages;i++){
-    const pg=await pdf.getPage(i);
-    const c=await pg.getTextContent();
+    if(timeUp()){destroy();throw new Error(abortMsg);}
+    if(onProgress){
+      const pct=Math.round((i/pdf.numPages)*100);
+      onProgress(`PDF: ${pct}% (${i}/${pdf.numPages}) ページ抽出中...`);
+    }
+    const pg=await withTimeout(pdf.getPage(i),cap(PDF_PAGE_TIMEOUT_MS),abortMsg,destroy);
+    const c=await withTimeout(pg.getTextContent(),cap(PDF_PAGE_TIMEOUT_MS),abortMsg,destroy);
     const vp=pg.getViewport({scale:1});
     const pageW=vp.width;
 
@@ -939,6 +1004,9 @@ async function parsePDF(f){
     // Track pages with very little extractable text (likely image/outlined text)
     const realContent=cleaned.filter(l=>l.length>3).join("");
     if(realContent.length<30)sparsePages.push(i);
+
+    // Yield to UI/event loop (prevents long sync blocks)
+    await new Promise((r)=>setTimeout(r,0));
   }
   // Detect CMap failure: if Japanese PDF has very few Japanese characters, text extraction failed
   const jpChars=(fullText.match(/[\u3040-\u309f\u30a0-\u30ff\u4e00-\u9fff]/g)||[]).length;
@@ -951,7 +1019,12 @@ async function parsePDF(f){
     }
     sparsePages.sort((a,b)=>a-b);
   }
-  return{text:fullText,pageCount:pdf.numPages,format:"PDF",sparsePages,pdfData:abCopy,cmapFailed};
+  const numPages=pdf.numPages;
+  // Cleanup (avoid leaking workers/memory)
+  try{pdf.cleanup?.();}catch{}
+  try{pdf.destroy?.();}catch{}
+  try{loadingTask?.destroy?.();}catch{}
+  return{text:fullText,pageCount:numPages,format:"PDF",sparsePages,pdfData:abCopy,cmapFailed};
 }
 
 // OCR: Send PDF directly to Claude Vision API (no canvas rendering — reliable in artifact env)
@@ -1455,7 +1528,7 @@ async function parseODT(f){
   }catch(e){
     throw new Error("ODTの解析に失敗しました。Word(.docx)形式での保存を推奨します。");
   }}
-async function parseFile(file){const ext=file.name.split(".").pop().toLowerCase();const P={pdf:parsePDF,docx:parseDOCX,doc:parseDOCX,xlsx:parseXLSX,xls:parseXLSX,ods:parseXLSX,csv:parseCSV,txt:parseTXT,tsv:parseTXT,md:parseMD,markdown:parseMD,html:parseHTML,htm:parseHTML,rtf:parseRTF,json:parseJSON,odt:parseODT};if(!P[ext])throw new Error("未対応: ."+ext+"\n対応形式: PDF, Word(.docx/.doc), Excel(.xlsx/.xls), ODS, CSV, TSV, TXT, Markdown, HTML, RTF, JSON, ODT");const r=await P[ext](file);r.text=normalizeText(r.text.replace(/[^\S\n]+$/gm,"").replace(/\n{3,}/g,"\n\n").replace(/^\n+/,"").trimEnd());return r;}
+async function parseFile(file,onProgress){const ext=file.name.split(".").pop().toLowerCase();const P={pdf:parsePDF,docx:parseDOCX,doc:parseDOCX,xlsx:parseXLSX,xls:parseXLSX,ods:parseXLSX,csv:parseCSV,txt:parseTXT,tsv:parseTXT,md:parseMD,markdown:parseMD,html:parseHTML,htm:parseHTML,rtf:parseRTF,json:parseJSON,odt:parseODT};if(!P[ext])throw new Error("未対応: ."+ext+"\n対応形式: PDF, Word(.docx/.doc), Excel(.xlsx/.xls), ODS, CSV, TSV, TXT, Markdown, HTML, RTF, JSON, ODT");const r=await P[ext](file,{onProgress});r.text=normalizeText(r.text.replace(/[^\S\n]+$/gm,"").replace(/\n{3,}/g,"\n\n").replace(/^\n+/,"").trimEnd());return r;}
 
 // ═══ AI Reformat ═══
 async function aiReformat(redactedText,instruction,apiKey,model){
@@ -3604,10 +3677,21 @@ function DiffView({original,modified,label}){
   )
 }
 
+function formatDuration(ms){
+  const s=Math.max(0,Math.floor((ms||0)/1000));
+  const hh=Math.floor(s/3600);
+  const mm=Math.floor((s%3600)/60);
+  const ss=s%60;
+  const two=(n)=>String(n).padStart(2,"0");
+  return hh>0?`${hh}:${two(mm)}:${two(ss)}`:`${mm}:${two(ss)}`;
+}
+
 // ═══ Upload Screen ═══
 function UploadScreen({onAnalyze,settings}){
   const[dragOver,setDragOver]=useState(false);const[loading,setLoading]=useState(false);const[error,setError]=useState(null);const[fileName,setFileName]=useState("");const[stage,setStage]=useState(0);const[mask,setMask]=useState({...DEFAULT_MASK});const inputRef=useRef(null);
   const[aiStatus,setAiStatus]=useState("");
+  const[elapsedMs,setElapsedMs]=useState(0);
+  const startAtRef=useRef(0);
   const [showUrlHelp, setShowUrlHelp] = useState(false)
   const urlHelpTriggerRef = useRef(null)
   const urlHelpCloseRef = useRef(null)
@@ -3635,6 +3719,15 @@ function UploadScreen({onAnalyze,settings}){
           clearTimeout(t)
       }
   }, [showUrlHelp, closeUrlHelp])
+
+  useEffect(()=>{
+    if(!loading)return;
+    const id=setInterval(()=>{
+      if(!startAtRef.current)return;
+      setElapsedMs(Date.now()-startAtRef.current);
+    },250);
+    return()=>clearInterval(id);
+  },[loading]);
 
   const processText=useCallback(async(text,name,format,pageCount,fileSize,rawText,sparsePages,pdfData)=>{
     let workText=text;
@@ -3737,16 +3830,18 @@ function UploadScreen({onAnalyze,settings}){
     await new Promise(r=>setTimeout(r,200));
     setStage(aiOn?7:4);
     setTimeout(()=>{
-      onAnalyze({file_name:name,file_format:format,page_count:pageCount,text_preview:workText.slice(0,8000),fullText:workText,rawText:originalRaw,sparsePageCount:sparsePages?.length||0,detections:wm,stats:{total:wm.length,regex:wm.filter(d=>d.source==="regex").length,dict:wm.filter(d=>d.source==="dict").length,ai:wm.filter(d=>d.source==="ai").length,heuristic:wm.filter(d=>d.source==="heuristic").length},fileSize,isDemo:fileSize==="DEMO",maskOpts:{keepPrefecture:!!mask.keepPrefecture,nameInitial:!!mask.nameInitial}});
+      const analysisMs=startAtRef.current?Date.now()-startAtRef.current:0;
+      onAnalyze({file_name:name,file_format:format,page_count:pageCount,text_preview:workText.slice(0,8000),fullText:workText,rawText:originalRaw,sparsePageCount:sparsePages?.length||0,detections:wm,stats:{total:wm.length,regex:wm.filter(d=>d.source==="regex").length,dict:wm.filter(d=>d.source==="dict").length,ai:wm.filter(d=>d.source==="ai").length,heuristic:wm.filter(d=>d.source==="heuristic").length},fileSize,isDemo:fileSize==="DEMO",analysis_ms:analysisMs,maskOpts:{keepPrefecture:!!mask.keepPrefecture,nameInitial:!!mask.nameInitial}});
     },200);
   },[onAnalyze,mask,settings,aiOn]);
 
-  const handleFile=useCallback(async(file)=>{if(!file)return;setLoading(true);setError(null);setFileName(file.name);setStage(0);try{setStage(1);const p=await parseFile(file);await processText(p.text,file.name,p.format,p.pageCount,`${(file.size/1024).toFixed(1)} KB`,p.text,p.sparsePages,p.pdfData);}catch(e){setError(e.message);setLoading(false);}},[processText]);
-  const handleDemo=useCallback(async(type)=>{const s=SAMPLES[type];if(!s)return;setLoading(true);setFileName(s.name);setStage(0);setTimeout(async()=>{setStage(1);setTimeout(async()=>{await processText(s.text,s.name,s.format,s.pageCount,"DEMO");},80);},80);},[processText]);
+  const handleFile=useCallback(async(file)=>{if(!file)return;startAtRef.current=Date.now();setElapsedMs(0);setAiStatus("");setLoading(true);setError(null);setFileName(file.name);setStage(0);try{setStage(1);const p=await parseFile(file,(msg)=>setAiStatus(msg));await processText(p.text,file.name,p.format,p.pageCount,`${(file.size/1024).toFixed(1)} KB`,p.text,p.sparsePages,p.pdfData);}catch(e){setError(e.message);setLoading(false);}},[processText]);
+  const handleDemo=useCallback(async(type)=>{const s=SAMPLES[type];if(!s)return;startAtRef.current=Date.now();setElapsedMs(0);setAiStatus("");setError(null);setLoading(true);setFileName(s.name);setStage(0);setTimeout(async()=>{setStage(1);setTimeout(async()=>{await processText(s.text,s.name,s.format,s.pageCount,"DEMO");},80);},80);},[processText]);
   const[inputMode,setInputMode]=useState("file"); // "file"|"url"|"paste"
   const[urlValue,setUrlValue]=useState("");const[pasteValue,setPasteValue]=useState("");const[urlFetching,setUrlFetching]=useState(false);
   const handleURL=useCallback(async()=>{
     const url=urlValue.trim();if(!url)return;
+    startAtRef.current=Date.now();setElapsedMs(0);setAiStatus("");
     setUrlFetching(true);setLoading(true);setError(null);setFileName(url);setStage(0);
     try{
       setStage(1);setAiStatus("URL取得中...");
@@ -3759,6 +3854,7 @@ function UploadScreen({onAnalyze,settings}){
   },[urlValue,processText]);
   const handlePaste=useCallback(async()=>{
     const raw=pasteValue.trim();if(!raw)return;
+    startAtRef.current=Date.now();setElapsedMs(0);setAiStatus("");
     setLoading(true);setError(null);setStage(0);
     try{
       setStage(1);
@@ -3889,6 +3985,18 @@ function UploadScreen({onAnalyze,settings}){
                       >
                           現在: {visibleStages[stageIdx] || '処理中'}
                           {subPct != null ? `（${subPct}%）` : ''}
+                      </div>
+                      <div
+                          style={{
+                              fontSize: 10,
+                              color: T.text3,
+                              marginTop: 4,
+                              textAlign: 'left',
+                              lineHeight: 1.4,
+                              fontFamily: T.mono,
+                          }}
+                      >
+                          経過: {formatDuration(elapsedMs)}
                       </div>
                   </div>
                   {aiStatus && (
@@ -5435,6 +5543,11 @@ function EditorScreen({data,onReset,apiKey,model}){
                       {data.page_count && (
                           <Badge color={T.text3} bg={T.surfaceAlt}>
                               {data.page_count}p
+                          </Badge>
+                      )}
+                      {typeof data.analysis_ms === "number" && data.analysis_ms > 0 && (
+                          <Badge color={T.text3} bg={T.surfaceAlt}>
+                              解析 {formatDuration(data.analysis_ms)}
                           </Badge>
                       )}
                       {data.isDemo && (

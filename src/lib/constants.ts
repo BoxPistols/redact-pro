@@ -88,7 +88,7 @@ export const AI_PROVIDERS: AIProvider[] = [
 ]
 
 export const AI_MODELS = AI_PROVIDERS.flatMap((p) =>
-  p.models.map((m) => ({ ...m, provider: p.id }))
+  p.models.map((m) => ({ ...m, provider: p.id })),
 )
 
 export function getProviderForModel(modelId: string): string {
