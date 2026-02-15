@@ -159,7 +159,7 @@ const EXPORT_FORMATS=[
   {id:"csv",label:"CSV",ext:".csv",icon:"C"},
   {id:"xlsx",label:"Excel",ext:".xlsx",icon:"X"},
   {id:"pdf",label:"PDF (印刷)",ext:"",icon:"P"},
-  {id:"docx",label:"Word",ext:".doc",icon:"W"},
+  {id:"docx",label:"Word",ext:".docx",icon:"W"},
 ];
 
 const CSS = `@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
@@ -512,7 +512,15 @@ async function detectWithAI(text, apiKey, model, fallbackModel, onProgress) {
 - person_name: 人名（姓名、フルネーム。フリガナも別エントリで）
   重要：「マーケター」「エンジニア」「デザイナー」等の職種名は人名ではありません
   重要：「朝霧デザイン」等の屋号・サービス名は人名ではありません
-- sns_account: SNSアカウント名・ユーザーID（@xxx、Github: xxx等）
+- sns_account: SNSアカウント名・ユーザーID
+  検出パターン例：
+  - @username（Twitter/X、Instagram等）
+  - GitHub: username または @username
+  - LinkedIn: /in/username
+  - Facebook: ユーザー名
+  - その他 @ で始まるユーザー名
+  重要：メールアドレスの @ は検出しない（別途検出済み）
+  重要：URL内の @ は検出しない（別途検出済み）
 
 以下の情報は検出不要（別途正規表現で検出済み）：
 - メールアドレス、電話番号、住所、URL、生年月日、郵便番号、マイナンバー
@@ -646,8 +654,8 @@ function mergeDetections(base, aiResults){
 }
 
 // ═══ Redaction ═══
-const PH={email:"[メール非公開]",url:"[URL非公開]",phone:"[電話番号非公開]",postal:"[郵便番号非公開]",birthday:"[年月日非公開]",address:"[住所非公開]",name_label:"[氏名非公開]",name_dict:"[氏名非公開]",name_context:"[氏名非公開]",name_ai:"[氏名非公開]",name_kana:"[氏名非公開]",sns_ai:"[SNS非公開]",mynumber:"[番号非公開]",ner_person:"[氏名非公開]",ner_org:"[組織名非公開]",face:"[顔写真削除]"};
-const PH_RE=/\[(?:メール非公開|URL非公開|電話番号非公開|郵便番号非公開|年月日非公開|生年月日非公開|住所非公開|住所詳細非公開|氏名非公開|番号非公開|SNS非公開|地名非公開|場所非公開|組織名非公開|日付非公開|国名非公開|顔写真削除|非公開|Name Redacted|Email Redacted|Phone Redacted|Address Redacted|DOB Redacted|URL Redacted)\]/g;
+const PH={email:"[メール非公開]",url:"[URL非公開]",phone:"[電話番号非公開]",postal:"[郵便番号非公開]",birthday:"[年月日非公開]",address:"[住所非公開]",name_label:"[氏名非公開]",name_dict:"[氏名非公開]",name_context:"[氏名非公開]",name_ai:"[氏名非公開]",name_kana:"[氏名非公開]",sns_ai:"[SNS非公開]",sns_twitter:"[Twitter/X非公開]",sns_github:"[GitHub非公開]",sns_linkedin:"[LinkedIn非公開]",sns_instagram:"[Instagram非公開]",sns_facebook:"[Facebook非公開]",mynumber:"[番号非公開]",ner_person:"[氏名非公開]",ner_org:"[組織名非公開]",face:"[顔写真削除]"};
+const PH_RE=/\[(?:メール非公開|URL非公開|電話番号非公開|郵便番号非公開|年月日非公開|生年月日非公開|住所非公開|住所詳細非公開|氏名非公開|番号非公開|SNS非公開|Twitter\/X非公開|GitHub非公開|LinkedIn非公開|Instagram非公開|Facebook非公開|地名非公開|場所非公開|組織名非公開|日付非公開|国名非公開|顔写真削除|非公開|Name Redacted|Email Redacted|Phone Redacted|Address Redacted|DOB Redacted|URL Redacted)\]/g;
 
 function applyRedaction(text,dets,opts){
   const keepPref=opts?.keepPrefecture||false;
@@ -1563,7 +1571,7 @@ function generateExport(rawContent,format,baseName){
       const printHTML=html.replace("</body>",`<script>window.onload=function(){window.print();setTimeout(()=>{window.close()},1000)}<\/script></body>`);
       return{data:printHTML,mime:"text/html;charset=utf-8",name:baseName+".html",isPrintPdf:true};
     }
-    case"docx":{const esc=content.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br>");const doc=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><style>body{font-family:'Noto Sans JP','MS Gothic',sans-serif;font-size:10.5pt;line-height:1.8;color:#222}h1{font-size:14pt;border-bottom:1.5pt solid #333;padding-bottom:4pt}.rd{background:#fee;color:#c33;font-weight:bold}</style></head><body><h1>${baseName}</h1><p style="font-size:8pt;color:#888">出力: ${ts}</p><div>${esc.replace(/\[([^\]]*非公開[^\]]*|[^\]]*Redacted[^\]]*)\]/g,'<span class="rd">[$1]</span>')}</div></body></html>`;return{data:bom+doc,mime:"application/msword;charset=utf-8",name:baseName+".doc"};}
+    case"docx":{const esc=content.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br>");const doc=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><style>body{font-family:'Noto Sans JP','MS Gothic',sans-serif;font-size:10.5pt;line-height:1.8;color:#222}h1{font-size:14pt;border-bottom:1.5pt solid #333;padding-bottom:4pt}.rd{background:#fee;color:#c33;font-weight:bold}</style></head><body><h1>${baseName}</h1><p style="font-size:8pt;color:#888">出力: ${ts}</p><div>${esc.replace(/\[([^\]]*非公開[^\]]*|[^\]]*Redacted[^\]]*)\]/g,'<span class="rd">[$1]</span>')}</div></body></html>`;return{data:bom+doc,mime:"application/msword;charset=utf-8",name:baseName+".docx"};}
     default:return{data:content,mime:"text/plain;charset=utf-8",name:baseName+".txt"};
   }
 }
@@ -2646,7 +2654,7 @@ function DesignExportModal({text,apiKey,model,onClose}){
     const blob=new Blob([bom+wordHTML],{type:"application/msword;charset=utf-8"});
     const a=document.createElement("a");
     a.href=URL.createObjectURL(blob);
-    a.download="resume.doc";
+    a.download="resume.docx";
     document.body.appendChild(a);a.click();document.body.removeChild(a);
     URL.revokeObjectURL(a.href);
   };
@@ -2955,7 +2963,7 @@ function DesignExportModal({text,apiKey,model,onClose}){
                                       padding: '9px 8px',
                                   }}
                               >
-                                  Word (.doc)
+                                  Word (.docx)
                               </Btn>
                               <Btn
                                   variant='ghost'
@@ -3036,29 +3044,49 @@ function DesignExportModal({text,apiKey,model,onClose}){
   )
 }
 // ═══ Preview / Export Modal ═══
-function PreviewModal({title,content,baseName,onClose}){
+function PreviewModal({title,content,baseName,onClose,onContentChange,editable}){
   const[copied,setCopied]=useState(false);
   const[fmt,setFmt]=useState("txt");
-  const[view,setView]=useState("layout"); // "layout" | "text"
+  const[view,setView]=useState("layout"); // "layout" | "text" | "edit"
+  const[editedContent,setEditedContent]=useState(content);
+  const[hasChanges,setHasChanges]=useState(false);
+
+  useEffect(()=>{setEditedContent(content);setHasChanges(false);},[content]);
+
+  const handleSave=useCallback(()=>{
+    if(onContentChange&&hasChanges){onContentChange(editedContent);}
+    setView("text");setHasChanges(false);
+  },[onContentChange,hasChanges,editedContent]);
+
+  const handleCancelEdit=useCallback(()=>{
+    setEditedContent(content);setView("text");setHasChanges(false);
+  },[content]);
 
   useEffect(() => {
       const h = (e) => {
-          if (e.key === 'Escape') onClose()
+          if (e.key === 'Escape') {
+              if(view==='edit'){handleCancelEdit();return;}
+              onClose();
+          }
+          if((e.metaKey||e.ctrlKey)&&e.key==='s'&&view==='edit'){
+              e.preventDefault();handleSave();
+          }
       }
       window.addEventListener('keydown', h)
       return () => window.removeEventListener('keydown', h)
-  }, [onClose])
+  }, [onClose,view,handleSave,handleCancelEdit])
 
-  const handleCopy=()=>{navigator.clipboard.writeText(content).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2000);});};
-  const handleDownload=()=>{const ex=generateExport(content,fmt,baseName);if(ex.isPrintPdf){triggerDownload(ex);}else triggerDownload(ex);};
-  const lines=content.split("\n").length;const chars=content.length;
+  const displayContent=view==='edit'?editedContent:content;
+  const handleCopy=()=>{navigator.clipboard.writeText(displayContent).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2000);});};
+  const handleDownload=()=>{const ex=generateExport(displayContent,fmt,baseName);if(ex.isPrintPdf){triggerDownload(ex);}else triggerDownload(ex);};
+  const lines=displayContent.split("\n").length;const chars=displayContent.length;
   const curFmt=EXPORT_FORMATS.find(f=>f.id===fmt);
 
   useEffect(()=>{
     if(fmt==="csv"||fmt==="xlsx")setView("text");
   },[fmt]);
 
-  const layoutHtml=useMemo(()=>generatePDFHTML(content,"gothic",{stripRedactions:false,highlightRedactions:true,removeRedactionOnlyLines:false}),[content]);
+  const layoutHtml=useMemo(()=>generatePDFHTML(displayContent,"gothic",{stripRedactions:false,highlightRedactions:true,removeRedactionOnlyLines:false}),[displayContent]);
   return (
       <div
           style={{
@@ -3158,6 +3186,25 @@ function PreviewModal({title,content,baseName,onClose}){
                           >
                               テキスト
                           </button>
+                          {editable!==false&&onContentChange&&(
+                          <button
+                              onClick={() => setView('edit')}
+                              style={{
+                                  padding: '6px 10px',
+                                  border: 'none',
+                                  background:
+                                      view === 'edit'
+                                          ? T.accentDim
+                                          : 'transparent',
+                                  color: view === 'edit' ? T.accent : T.text3,
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                              }}
+                          >
+                              編集
+                          </button>
+                          )}
                       </div>
                       <button
                           onClick={onClose}
@@ -3180,7 +3227,29 @@ function PreviewModal({title,content,baseName,onClose}){
                   </div>
               </div>
               <div style={{ flex: 1, overflow: 'auto', padding: 0 }}>
-                  {view === 'layout' ? (
+                  {view === 'edit' ? (
+                      <div style={{display:'flex',flexDirection:'column',height:'100%'}}>
+                          <textarea
+                              value={editedContent}
+                              onChange={(e)=>{setEditedContent(e.target.value);setHasChanges(e.target.value!==content);}}
+                              style={{
+                                  width:'100%',flex:1,minHeight:400,
+                                  padding:'16px 24px',fontFamily:T.mono,fontSize:12,
+                                  lineHeight:1.8,color:T.text,background:T.bg,
+                                  border:'none',resize:'none',
+                                  outline:`2px solid ${T.accent}`,outlineOffset:-2,
+                                  borderRadius:0,
+                              }}
+                              spellCheck={false}
+                              autoFocus
+                          />
+                          <div style={{padding:'10px 22px',display:'flex',justifyContent:'flex-end',gap:8,alignItems:'center',borderTop:`1px solid ${T.border}`,background:T.bg2}}>
+                              {hasChanges&&<span style={{fontSize:11,color:T.amber,marginRight:'auto'}}>未保存の変更があります</span>}
+                              <Btn variant='ghost' onClick={handleCancelEdit} style={{padding:'6px 14px',fontSize:12,borderRadius:8}}>キャンセル</Btn>
+                              <Btn onClick={handleSave} disabled={!hasChanges} style={{padding:'6px 14px',fontSize:12,borderRadius:8,opacity:hasChanges?1:.5}}>保存 (Ctrl+S)</Btn>
+                          </div>
+                      </div>
+                  ) : view === 'layout' ? (
                       <div
                           style={{
                               display: 'flex',
@@ -6247,6 +6316,10 @@ function EditorScreen({data,onReset,apiKey,model}){
                                   title: 'マスキング済みテキスト',
                                   content: buildTxt(),
                                   baseName,
+                                  editable: true,
+                                  onContentChange: (newContent) => {
+                                      setPreview(prev => prev ? {...prev, content: newContent} : null)
+                                  },
                               })
                           }
                           style={{ flex: 1, borderRadius: 10, fontSize: 12 }}
@@ -6324,7 +6397,9 @@ function EditorScreen({data,onReset,apiKey,model}){
                   title={preview.title}
                   content={preview.content}
                   baseName={preview.baseName}
+                  editable={preview.editable}
                   onClose={() => setPreview(null)}
+                  onContentChange={preview.onContentChange}
               />
           )}
       </div>

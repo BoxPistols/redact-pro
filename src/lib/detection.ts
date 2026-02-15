@@ -93,6 +93,41 @@ export const REGEX_PATTERNS: RegexPattern[] = [
       /(?:フリガナ|ふりがな|カナ)\s*[：:・\s]\s*([\u30a0-\u30ffー]+(?:[\s\u3000][\u30a0-\u30ffー]+)?)/g,
     group: 1,
   },
+  {
+    id: 'sns_twitter',
+    label: 'Twitter/Xアカウント',
+    category: 'contact',
+    regex: /(?:Twitter|X|ツイッター)\s*[：:・\s]\s*@([a-zA-Z0-9_]{1,15})/gi,
+    group: 1,
+  },
+  {
+    id: 'sns_github',
+    label: 'GitHubアカウント',
+    category: 'contact',
+    regex: /(?:GitHub|Github|github|ギットハブ)\s*[：:・\s]\s*@?([a-zA-Z0-9](?:[a-zA-Z0-9]|-(?=[a-zA-Z0-9])){0,38})/gi,
+    group: 1,
+  },
+  {
+    id: 'sns_linkedin',
+    label: 'LinkedInアカウント',
+    category: 'contact',
+    regex: /(?:LinkedIn|linkedin|リンクトイン)\s*[：:・\s]\s*(?:\/in\/)?([a-zA-Z0-9-]{3,100})/gi,
+    group: 1,
+  },
+  {
+    id: 'sns_instagram',
+    label: 'Instagramアカウント',
+    category: 'contact',
+    regex: /(?:Instagram|instagram|インスタグラム)\s*[：:・\s]\s*@([a-zA-Z0-9_](?:[a-zA-Z0-9_.]{0,28}[a-zA-Z0-9_])?)/gi,
+    group: 1,
+  },
+  {
+    id: 'sns_facebook',
+    label: 'Facebookアカウント',
+    category: 'contact',
+    regex: /(?:Facebook|facebook|フェイスブック)\s*[：:・\s]\s*@?([a-zA-Z0-9.]{3,50})/gi,
+    group: 1,
+  },
 ]
 
 // Year/date pattern (used to filter false-positive detections)
@@ -266,6 +301,18 @@ export function detectRegex(text: string): Detection[] {
           const after1 = text.slice(mEnd, mEnd + 1)
           if (/[年月]/.test(after1)) continue
         }
+      }
+
+      // False positive filter: SNS accounts
+      if (p.id.startsWith('sns_')) {
+        const mStart = m.index
+        const mEnd = m.index + m[0].length
+        const before = text.slice(Math.max(0, mStart - 20), mStart)
+        // Skip if part of email address
+        if (/[a-zA-Z0-9._%+\-]@/.test(before) && /\.\w+/.test(text.slice(mEnd, mEnd + 10)))
+          continue
+        // Skip if part of URL (already detected by url pattern)
+        if (/https?:\/\/\S*$/.test(before)) continue
       }
 
       // False positive filter: date as birthday vs document date

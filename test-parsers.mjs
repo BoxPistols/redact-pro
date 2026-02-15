@@ -39,7 +39,8 @@ if (parseFileMatch) {
     const exists = defRe.test(src)
     const status = exists ? '✅' : '❌'
     console.log(`${status} ${fn}`)
-    if (!exists) fail++
+    if (exists) pass++
+    else fail++
   }
 }
 
@@ -75,20 +76,25 @@ if (darkMatch) {
   const text3 = extractVar(d, '--rp-text3')
   const border = extractVar(d, '--rp-border')
 
-  console.log('\n=== Dark Mode WCAG ===')
-  const checks = [
-    ['text on bg', cr(text, bg), 7, 13],
-    ['text2 on bg (AA)', cr(text2, bg), 4.5, 99],
-    ['text3 on bg (AA-lg)', cr(text3, bg), 3, 99],
-    ['border visibility', cr(border, bg), 1.5, 99],
-  ]
-  for (const [label, ratio, min, max] of checks) {
-    const ok = ratio >= min && ratio <= max
-    console.log(
-      `${ok ? '✅' : '❌'} ${label}: ${ratio.toFixed(2)} (${min}-${max === 99 ? '∞' : max})`,
-    )
-    if (!ok) fail++
-    else pass++
+  if (!bg || !text || !text2 || !text3 || !border) {
+    console.log('\n❌ Dark Mode: Missing CSS variables')
+    fail++
+  } else {
+    console.log('\n=== Dark Mode WCAG ===')
+    const checks = [
+      ['text on bg', cr(text, bg), 7, 13],
+      ['text2 on bg (AA)', cr(text2, bg), 4.5, 99],
+      ['text3 on bg (AA-lg)', cr(text3, bg), 3, 99],
+      ['border visibility', cr(border, bg), 1.5, 99],
+    ]
+    for (const [label, ratio, min, max] of checks) {
+      const ok = ratio >= min && ratio <= max
+      console.log(
+        `${ok ? '✅' : '❌'} ${label}: ${ratio.toFixed(2)} (${min}-${max === 99 ? '∞' : max})`,
+      )
+      if (!ok) fail++
+      else pass++
+    }
   }
 }
 
@@ -100,20 +106,25 @@ if (lightMatch) {
   const text3 = extractVar(d, '--rp-text3')
   const border = extractVar(d, '--rp-border')
 
-  console.log('\n=== Light Mode WCAG ===')
-  const checks = [
-    ['text on bg', cr(text, bg), 7, 13],
-    ['text2 on bg (AA)', cr(text2, bg), 4.5, 99],
-    ['text3 on bg (AA-lg)', cr(text3, bg), 3, 99],
-    ['border visibility', cr(border, bg), 1.5, 99],
-  ]
-  for (const [label, ratio, min, max] of checks) {
-    const ok = ratio >= min && ratio <= max
-    console.log(
-      `${ok ? '✅' : '❌'} ${label}: ${ratio.toFixed(2)} (${min}-${max === 99 ? '∞' : max})`,
-    )
-    if (!ok) fail++
-    else pass++
+  if (!bg || !text || !text2 || !text3 || !border) {
+    console.log('\n❌ Light Mode: Missing CSS variables')
+    fail++
+  } else {
+    console.log('\n=== Light Mode WCAG ===')
+    const checks = [
+      ['text on bg', cr(text, bg), 7, 13],
+      ['text2 on bg (AA)', cr(text2, bg), 4.5, 99],
+      ['text3 on bg (AA-lg)', cr(text3, bg), 3, 99],
+      ['border visibility', cr(border, bg), 1.5, 99],
+    ]
+    for (const [label, ratio, min, max] of checks) {
+      const ok = ratio >= min && ratio <= max
+      console.log(
+        `${ok ? '✅' : '❌'} ${label}: ${ratio.toFixed(2)} (${min}-${max === 99 ? '∞' : max})`,
+      )
+      if (!ok) fail++
+      else pass++
+    }
   }
 }
 

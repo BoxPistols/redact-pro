@@ -67,6 +67,7 @@ const AI_REQUEST_TIMEOUT_MS = 90_000
 interface OpenAIOutputPart {
   type?: string
   text?: string
+  refusal?: string
 }
 
 interface OpenAIMessage {
@@ -89,6 +90,16 @@ function extractOpenAIText(body: OpenAIResponseBody): string {
   if (typeof msg.content === 'string') return msg.content
 
   if (Array.isArray(msg.content)) {
+    // Check for refusal parts in content array
+    for (const part of msg.content) {
+      if (
+        part.type === 'refusal' ||
+        (typeof part.refusal === 'string' && part.refusal.trim())
+      ) {
+        return part.refusal || ''
+      }
+    }
+    // Extract text parts
     const joined = msg.content
       .map((part) => (typeof part.text === 'string' ? part.text : ''))
       .join('')
@@ -110,10 +121,25 @@ async function fetchWithTimeout(
 ): Promise<Response> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
+
+  const externalSignal = init.signal
+  const onAbort = () => controller.abort()
+
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      onAbort()
+    } else {
+      externalSignal.addEventListener('abort', onAbort)
+    }
+  }
+
   try {
     return await fetch(url, { ...init, signal: controller.signal })
   } finally {
     clearTimeout(timeout)
+    if (externalSignal) {
+      externalSignal.removeEventListener('abort', onAbort)
+    }
   }
 }
 
