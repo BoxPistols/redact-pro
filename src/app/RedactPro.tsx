@@ -2726,7 +2726,7 @@ function A4PreviewPanel({text,detections,maskOpts,focusDetId,focusPulse,onFocusD
           result.push({line:lineBuffer,raw:lineBuffer.map(s=>s.text||"").join("")});
           lineBuffer=[];
         }
-        if(parts[i]||i<parts.length-1){
+        if(parts[i]||i<parts.length){
           lineBuffer.push({...seg,text:parts[i]});
         }
       }
@@ -2791,7 +2791,7 @@ function A4PreviewPanel({text,detections,maskOpts,focusDetId,focusPulse,onFocusD
   }
 
   const pageStyle={
-    maxWidth:660,margin:"0 auto",padding:"26px 30px",
+    maxWidth:595,margin:"0 auto",padding:"26px 30px",
     fontFamily:"'Noto Sans JP',sans-serif",color:"#111827",
     fontSize:"10.2pt",lineHeight:1.75,background:"#fff",
     minHeight:842,
@@ -2845,10 +2845,10 @@ function A4PreviewPanel({text,detections,maskOpts,focusDetId,focusPulse,onFocusD
                   }else if(charCount>=sepIdx){
                     valSegs.push(renderSegment(seg,`${li}_v${si}`));
                   }else{
-                    // セグメントがキーと値にまたがる場合
+                    // セグメントがキーと値にまたがる場合 — detection metadataを保持
                     const splitAt=sepIdx-charCount;
-                    keySegs.push(<span key={`${li}_ks${si}`}>{seg.text.slice(0,splitAt)}</span>);
-                    valSegs.push(<span key={`${li}_vs${si}`}>{seg.text.slice(splitAt)}</span>);
+                    keySegs.push(renderSegment({...seg,text:seg.text.slice(0,splitAt)},`${li}_ks${si}`));
+                    valSegs.push(renderSegment({...seg,text:seg.text.slice(splitAt)},`${li}_vs${si}`));
                   }
                   charCount+=segLen;
                 }
