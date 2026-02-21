@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_BASE_URL || 'https://redact-pro.vercel.app'),
   title: 'RedactPro - AI個人情報マスキングツール',
   description:
     '日本語履歴書・職務経歴書の個人情報を自動検出・マスキング。PDF/Word/Excel/16形式対応。',
@@ -10,6 +11,11 @@ export const metadata: Metadata = {
     capable: true,
     title: 'RedactPro',
     statusBarStyle: 'black-translucent',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'RedactPro - AI個人情報マスキングツール',
+    description: '日本語履歴書・職務経歴書の個人情報を自動検出・マスキング。',
   },
 }
 
