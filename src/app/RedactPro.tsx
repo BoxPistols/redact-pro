@@ -6946,6 +6946,8 @@ function EditorScreen({data,onReset,apiKey,model}){
                   display: sidebarCollapsed?'none':'flex',
                   flexDirection: 'column',
                   minWidth: 0,
+                  minHeight: 0,
+                  overflow: 'hidden',
                   background: T.bg2,
               }}
           >
