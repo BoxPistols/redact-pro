@@ -2712,7 +2712,7 @@ strong{font-weight:700}
 }
 
 // ═══ A4 Preview (inline) ═══
-function A4PreviewPanel({text,detections,maskOpts,focusDetId,focusPulse,onFocusDet}){
+function A4PreviewPanel({text,detections,maskOpts,focusDetId,focusPulse,onFocusDet,zoom=0.62}){
   const segments=useMemo(()=>{
     return buildAnnotations(text,detections,{
       showRedacted:true,
@@ -2818,7 +2818,7 @@ function A4PreviewPanel({text,detections,maskOpts,focusDetId,focusPulse,onFocusD
 
   return (
     <div style={{flex:1,overflow:"auto",background:"#e5e7eb",display:"flex",justifyContent:"center",padding:"24px 16px"}}>
-      <div style={{width:595,background:"#fff",boxShadow:"0 4px 24px rgba(0,0,0,.12)",borderRadius:4,overflow:"hidden",transformOrigin:"top center"}}>
+      <div style={{width:595,background:"#fff",boxShadow:"0 4px 24px rgba(0,0,0,.12)",borderRadius:4,overflow:"hidden",transform:`scale(${zoom})`,transformOrigin:"top center"}}>
         <div style={pageStyle}>
           {lines.map(({line,raw},li)=>{
             const cls=classifyLine(raw);
@@ -3947,7 +3947,7 @@ function DiffView({original,modified,label}){
   }
   const changeCount=diffs.filter(d=>d.type==="changed").length;
   return (
-      <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
           <div
               style={{
                   padding: '8px 16px',
@@ -5945,6 +5945,7 @@ function EditorScreen({data,onReset,apiKey,model}){
   const[editedText,setEditedText]=useState(null);
   const[previewVisible,setPreviewVisible]=useState(true);
   const[previewFontType,setPreviewFontType]=useState("gothic");
+  const[previewZoom,setPreviewZoom]=useState(0.62);
   // Draggable panel widths (percentages of total width)
   const[leftPct,setLeftPct]=useState(null);
   const[rightPct,setRightPct]=useState(null);
@@ -6100,6 +6101,7 @@ function EditorScreen({data,onReset,apiKey,model}){
                       background: T.bg2,
                       flexWrap: 'wrap',
                       gap: 6,
+                      flexShrink: 0,
                   }}
               >
                   <div
@@ -6344,7 +6346,7 @@ function EditorScreen({data,onReset,apiKey,model}){
               <div style={{
                   padding:"4px 14px",display:"flex",alignItems:"center",gap:4,
                   borderBottom:`1px solid ${T.border}`,background:T.bg2,
-                  flexWrap:"wrap",
+                  flexWrap:"wrap",flexShrink:0,
               }}>
                   <span style={{fontSize:11,color:T.text3,fontWeight:600,marginRight:4}}>カテゴリ</span>
                   {allCats.map(cat=>{
@@ -6398,7 +6400,7 @@ function EditorScreen({data,onReset,apiKey,model}){
                       label='AI整形変更'
                   />
               ) : editMode ? (
-                  <div style={{flex:1,overflow:"auto",padding:0,background:T.bg,display:"flex",flexDirection:"column"}}>
+                  <div style={{flex:1,overflow:"auto",padding:0,background:T.bg,display:"flex",flexDirection:"column",minHeight:0}}>
                       <div style={{padding:"6px 14px",borderBottom:`1px solid ${T.border}`,fontSize:12,color:T.text3,lineHeight:1.6,flexShrink:0,background:T.bg2}}>
                           <span style={{fontWeight:600,color:T.text2}}>記法: </span>
                           <code style={{background:T.surface,padding:"1px 4px",borderRadius:3,fontFamily:T.mono}}>**太字**</code>
@@ -6424,6 +6426,7 @@ function EditorScreen({data,onReset,apiKey,model}){
                           overflow: 'auto',
                           padding: 24,
                           background: T.bg,
+                          minHeight: 0,
                       }}
                   >
                       <pre
@@ -6490,6 +6493,20 @@ function EditorScreen({data,onReset,apiKey,model}){
                               }}>明朝</button>
                           </>
                       )}
+                      <div style={{display:"flex",alignItems:"center",gap:2,marginLeft:4}}>
+                          <button onClick={()=>setPreviewZoom(z=>Math.max(0.3,+(z-0.1).toFixed(2)))} title="縮小"
+                              style={{width:22,height:22,borderRadius:4,border:`1px solid ${T.border}`,background:"transparent",color:T.text2,cursor:"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:T.font}}>
+                              &minus;
+                          </button>
+                          <button onClick={()=>setPreviewZoom(0.62)} title="ズームをリセット"
+                              style={{padding:"2px 6px",borderRadius:4,border:`1px solid ${T.border}`,background:"transparent",color:T.text3,cursor:"pointer",fontSize:10,fontFamily:T.mono,fontWeight:600,minWidth:40,textAlign:"center"}}>
+                              {Math.round(previewZoom*100)}%
+                          </button>
+                          <button onClick={()=>setPreviewZoom(z=>Math.min(1.5,+(z+0.1).toFixed(2)))} title="拡大"
+                              style={{width:22,height:22,borderRadius:4,border:`1px solid ${T.border}`,background:"transparent",color:T.text2,cursor:"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:T.font}}>
+                              +
+                          </button>
+                      </div>
                       <span style={{flex:1}}/>
                       {editMode && (
                           <div style={{display:"flex",gap:4}}>
@@ -6516,7 +6533,7 @@ function EditorScreen({data,onReset,apiKey,model}){
                   {/* Preview content */}
                   {editMode ? (
                       <div style={{flex:1,overflow:"auto",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:16}}>
-                          <div style={{width:595,minHeight:842,background:"#fff",boxShadow:"0 4px 24px rgba(0,0,0,.12)",borderRadius:4,overflow:"hidden",transform:"scale(0.62)",transformOrigin:"top center"}}>
+                          <div style={{width:595,minHeight:842,background:"#fff",boxShadow:"0 4px 24px rgba(0,0,0,.12)",borderRadius:4,overflow:"hidden",transform:`scale(${previewZoom})`,transformOrigin:"top center"}}>
                               <iframe
                                   srcDoc={previewHtml}
                                   style={{width:"100%",minHeight:842,border:"none",pointerEvents:"none"}}
@@ -6533,6 +6550,7 @@ function EditorScreen({data,onReset,apiKey,model}){
                           focusDetId={focusDetId}
                           focusPulse={focusPulse}
                           onFocusDet={focusDetection}
+                          zoom={previewZoom}
                       />
                   )}
               </div>
