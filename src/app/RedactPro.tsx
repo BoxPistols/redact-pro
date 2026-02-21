@@ -1710,6 +1710,33 @@ function Pill({ children, active, onClick, color }) {
     )
 }
 
+// ═══ Layout Presets ═══
+const LAYOUT_PRESETS=[
+  {id:'text',  label:'テキスト重視',    cols:[{f:3},{f:1}]},
+  {id:'balanced',label:'バランス',       cols:[{f:5},{f:3},{f:2}]},
+  {id:'preview',label:'プレビュー重視', cols:[{f:2},{f:5},{f:2}]},
+  {id:'focus', label:'集中モード',      cols:[{f:1}]},
+];
+function LayoutIcon({cols,active,color}){
+  return (
+    <div style={{
+      width:28,height:18,borderRadius:3,
+      border:`1.5px solid ${active?color:T.border}`,
+      display:'flex',gap:1,padding:2,
+      background:active?`${color}18`:'transparent',
+      overflow:'hidden',
+    }}>
+      {cols.map((c,i)=>(
+        <span key={i} style={{
+          flex:c.f,borderRadius:1,
+          background:active?color:T.text3,
+          opacity:active?0.7:0.25,
+        }}/>
+      ))}
+    </div>
+  );
+}
+
 // ═══ Settings Modal ═══
 function SettingsModal({settings,onSave,onClose,isDark,setIsDark}){
   const [provider, setProvider] = useState(settings.provider || 'openai')
@@ -5949,8 +5976,31 @@ function EditorScreen({data,onReset,apiKey,model}){
   // Draggable panel widths (percentages of total width)
   const[leftPct,setLeftPct]=useState(null);
   const[rightPct,setRightPct]=useState(null);
-  // Reset drag sizes when layout changes
-  useEffect(()=>{setLeftPct(null);setRightPct(null);},[previewVisible,sidebarCollapsed]);
+  // Layout presets
+  const[layoutPreset,setLayoutPreset]=useState('balanced');
+  const presetTransRef=useRef(false);
+  const applyLayoutPreset=useCallback((id)=>{
+    setLayoutPreset(id);
+    setLeftPct(null);setRightPct(null);
+    presetTransRef.current=true;
+    setTimeout(()=>{presetTransRef.current=false;},300);
+    switch(id){
+      case 'text':    setPreviewVisible(false);setSidebarCollapsed(false);break;
+      case 'balanced':setPreviewVisible(true);setSidebarCollapsed(false);break;
+      case 'preview': setPreviewVisible(true);setSidebarCollapsed(false);
+        // defer leftPct set after state updates
+        setTimeout(()=>setLeftPct(30),0);break;
+      case 'focus':   setPreviewVisible(false);setSidebarCollapsed(true);break;
+    }
+  },[]);
+  const activePreset=useMemo(()=>{
+    if(rightPct!==null)return null;
+    if(!previewVisible&&sidebarCollapsed&&leftPct===null)return 'focus';
+    if(!previewVisible&&!sidebarCollapsed&&leftPct===null)return 'text';
+    if(previewVisible&&!sidebarCollapsed&&leftPct===null)return 'balanced';
+    if(previewVisible&&!sidebarCollapsed&&leftPct===30)return 'preview';
+    return null;
+  },[previewVisible,sidebarCollapsed,leftPct,rightPct]);
   const hasRawText=data.rawText&&data.rawText!==data.fullText&&data.rawText!==data.text_preview;
 
   const toggle=id=>setDetections(p=>p.map(d=>d.id===id?{...d,enabled:!d.enabled}:d));
@@ -6040,12 +6090,11 @@ function EditorScreen({data,onReset,apiKey,model}){
 
     const onMove=(ev)=>{
       const dx=ev.clientX-startX;
+      setLayoutPreset(null);
       if(divider==='left'){
-        // Left divider: resize left panel, center fills remaining
         const newLeft=Math.max(160,Math.min(totalW*0.65,initLeftW+dx));
         setLeftPct((newLeft/totalW)*100);
       }else{
-        // Right divider: drag left = sidebar wider, drag right = sidebar narrower
         const newRight=Math.max(200,Math.min(totalW*0.55,initRightW-dx));
         setRightPct((newRight/totalW)*100);
       }
@@ -6082,13 +6131,13 @@ function EditorScreen({data,onReset,apiKey,model}){
           <div
               className='rp-editor-left'
               style={{
-                  flex: leftPct ? `0 0 ${leftPct}%` : previewVisible ? '1 1 38%' : '1 1 56%',
+                  flex: leftPct ? `0 0 ${leftPct}%` : previewVisible ? '1 1 50%' : '1 1 60%',
                   display: 'flex',
                   flexDirection: 'column',
                   minWidth: 0,
                   minHeight: 0,
                   overflow: 'hidden',
-                  transition: leftPct ? 'none' : 'flex .2s',
+                  transition: (leftPct&&!presetTransRef.current) ? 'none' : 'flex .2s',
               }}
           >
               <div
@@ -6166,7 +6215,7 @@ function EditorScreen({data,onReset,apiKey,model}){
                           }}
                       >
                           <button
-                              title='マスク済みテキストを表示'
+                              title='マスク: 個人情報を隠した結果を表示'
                               onClick={() => setViewMode('original')}
                               style={{
                                   padding: '5px 10px',
@@ -6188,7 +6237,7 @@ function EditorScreen({data,onReset,apiKey,model}){
                               マスク
                           </button>
                           <button
-                              title='変更差分を表示'
+                              title='Diff: 元テキストとマスク後の違いを並べて比較'
                               onClick={() => setViewMode('diff')}
                               style={{
                                   padding: '5px 10px',
@@ -6210,7 +6259,7 @@ function EditorScreen({data,onReset,apiKey,model}){
                           {hasRawText && (
                               <>
                                   <button
-                                      title='抽出テキストを表示'
+                                      title='Raw: ファイルから抽出した生テキストを表示'
                                       onClick={() => setViewMode('raw')}
                                       style={{
                                           padding: '5px 10px',
@@ -6232,7 +6281,7 @@ function EditorScreen({data,onReset,apiKey,model}){
                                       Raw
                                   </button>
                                   <button
-                                      title='抽出テキストの差分を表示'
+                                      title='Raw Diff: 生テキストとAI整形後の違いを比較'
                                       onClick={() => setViewMode('raw-diff')}
                                       style={{
                                           padding: '5px 10px',
@@ -6258,7 +6307,7 @@ function EditorScreen({data,onReset,apiKey,model}){
                           {aiResult && (
                               <>
                                   <button
-                                      title='AI整形結果を表示'
+                                      title='AI整形: AIが読みやすく整形したテキストを表示'
                                       onClick={() => setViewMode('ai')}
                                       style={{
                                           padding: '5px 10px',
@@ -6280,7 +6329,7 @@ function EditorScreen({data,onReset,apiKey,model}){
                                       AI整形
                                   </button>
                                   <button
-                                      title='AI整形の差分を表示'
+                                      title='AI Diff: マスク結果とAI整形後の違いを比較'
                                       onClick={() => setViewMode('ai-diff')}
                                       style={{
                                           padding: '5px 10px',
@@ -6306,7 +6355,7 @@ function EditorScreen({data,onReset,apiKey,model}){
                       </div>
                       {!showDiff && !showAiDiff && viewMode !== 'raw-diff' && !editMode && (
                           <Btn
-                              title={showRedacted ? 'マスク済みテキストを表示中' : '元のテキストを表示中'}
+                              title={showRedacted ? 'マスク済みテキストを表示中（クリックで元文に切替）' : '元のテキストを表示中（クリックでマスク表示に切替）'}
                               variant={showRedacted ? 'danger' : 'ghost'}
                               onClick={() => setShowRedacted(!showRedacted)}
                               style={{
@@ -6319,7 +6368,7 @@ function EditorScreen({data,onReset,apiKey,model}){
                           </Btn>
                       )}
                       <Btn
-                          title='テキストを直接編集'
+                          title='編集: テキストを直接編集してA4プレビューに即反映'
                           variant={editMode ? 'primary' : 'ghost'}
                           onClick={() => {
                               if(!editMode){
@@ -6339,6 +6388,20 @@ function EditorScreen({data,onReset,apiKey,model}){
                       >
                           {editMode ? '編集中' : '編集'}
                       </Btn>
+                      <div style={{width:1,height:20,background:T.border,marginLeft:4,marginRight:2,flexShrink:0}}/>
+                      <div style={{display:'flex',gap:2,alignItems:'center'}}>
+                          {LAYOUT_PRESETS.map(p=>(
+                              <button key={p.id} title={p.label} onClick={()=>applyLayoutPreset(p.id)}
+                                  style={{
+                                      padding:3,borderRadius:4,cursor:'pointer',
+                                      border:`1px solid ${activePreset===p.id?T.accent:'transparent'}`,
+                                      background:activePreset===p.id?T.accentDim:'transparent',
+                                      display:'flex',alignItems:'center',justifyContent:'center',
+                                  }}>
+                                  <LayoutIcon cols={p.cols} active={activePreset===p.id} color={T.accent}/>
+                              </button>
+                          ))}
+                      </div>
                   </div>
               </div>
               {/* カテゴリ別クイックトグル */}
@@ -6468,7 +6531,7 @@ function EditorScreen({data,onReset,apiKey,model}){
           {/* Center: A4 Preview Panel (always visible) */}
           {previewVisible ? (
               <div className="rp-editor-center" style={{
-                  flex:"1 1 0%",minWidth:200,display:"flex",flexDirection:"column",
+                  flex:"0 1 340px",minWidth:200,display:"flex",flexDirection:"column",
                   background:"#e5e7eb",minHeight:0,overflow:"hidden",
               }}>
                   {/* Preview toolbar */}
@@ -6525,7 +6588,7 @@ function EditorScreen({data,onReset,apiKey,model}){
                           padding:"3px 6px",borderRadius:5,fontSize:13,cursor:"pointer",
                           border:`1px solid ${T.border}`,background:"transparent",color:T.text3,
                       }}>&#x2197;</button>
-                      <button onClick={()=>setPreviewVisible(false)} title="プレビューを閉じる" style={{
+                      <button onClick={()=>{setPreviewVisible(false);setLeftPct(null);setRightPct(null);}} title="プレビューを閉じる" style={{
                           padding:"3px 6px",borderRadius:5,fontSize:13,cursor:"pointer",
                           border:`1px solid ${T.border}`,background:"transparent",color:T.text3,
                       }}>&#x276F;</button>
@@ -6556,7 +6619,7 @@ function EditorScreen({data,onReset,apiKey,model}){
               </div>
           ) : (
               <div
-                  onClick={()=>setPreviewVisible(true)}
+                  onClick={()=>{setPreviewVisible(true);setLeftPct(null);setRightPct(null);}}
                   style={{
                       width:36,display:"flex",flexDirection:"column",
                       alignItems:"center",justifyContent:"center",gap:8,
@@ -6582,7 +6645,7 @@ function EditorScreen({data,onReset,apiKey,model}){
           {/* Collapsed sidebar indicator */}
           {sidebarCollapsed && (
               <div
-                  onClick={()=>setSidebarCollapsed(false)}
+                  onClick={()=>{setSidebarCollapsed(false);setLeftPct(null);setRightPct(null);}}
                   style={{
                       width:40,display:"flex",flexDirection:"column",
                       alignItems:"center",justifyContent:"center",gap:8,
@@ -6602,7 +6665,7 @@ function EditorScreen({data,onReset,apiKey,model}){
           <div
               className='rp-editor-right'
               style={{
-                  flex: rightPct ? `0 0 ${rightPct}%` : previewVisible ? '0 0 260px' : '1 1 44%',
+                  flex: rightPct ? `0 0 ${rightPct}%` : previewVisible ? '0 0 260px' : '0 1 300px',
                   display: sidebarCollapsed?'none':'flex',
                   flexDirection: 'column',
                   minWidth: 200,
@@ -6655,7 +6718,7 @@ function EditorScreen({data,onReset,apiKey,model}){
                           {enabledCount > 0 ? '保護中' : '未保護'}
                       </Badge>
                       <button
-                          onClick={()=>setSidebarCollapsed(true)}
+                          onClick={()=>{setSidebarCollapsed(true);setLeftPct(null);setRightPct(null);}}
                           title="サイドバーを折りたたむ"
                           style={{
                               background:"transparent",border:"none",cursor:"pointer",
