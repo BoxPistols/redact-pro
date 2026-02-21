@@ -156,4 +156,110 @@ describe('buildAnnotations', () => {
     expect(result).toHaveLength(1)
     expect(result[0].type).toBe('text')
   })
+
+  it('dedup works when shorter value appears first in array', () => {
+    // 入力順序逆転: 短い値が先
+    const dets = [
+      makeDet('2', '東京都', 'address', 'address'),
+      makeDet('1', '東京都港区', 'address', 'address'),
+    ]
+    const text = '住所: 東京都港区六本木'
+    const result = __test__.buildAnnotations(text, dets, {})
+    const detSegs = result.filter((s: { type: string }) => s.type === 'det')
+    expect(detSegs).toHaveLength(1)
+    expect(detSegs[0].text).toBe('東京都港区')
+    expect(detSegs[0].det.id).toBe('1')
+  })
+
+  it('marks enabled:false detections with disabledDet flag', () => {
+    const dets = [makeDet('1', '田中太郎', 'name_dict', 'name', false)]
+    const text = '氏名: 田中太郎'
+    const result = __test__.buildAnnotations(text, dets, {})
+    const detSegs = result.filter((s: { type: string }) => s.type === 'det')
+    expect(detSegs).toHaveLength(1)
+    expect(detSegs[0].masked).toBe(false)
+    expect(detSegs[0].disabledDet).toBe(true)
+    expect(detSegs[0].text).toBe('田中太郎')
+  })
+
+  it('enabled:false detection is not masked even with showRedacted', () => {
+    const dets = [makeDet('1', 'test@mail.com', 'email', 'contact', false)]
+    const text = '連絡先: test@mail.com'
+    const result = __test__.buildAnnotations(text, dets, { showRedacted: true })
+    const detSegs = result.filter((s: { type: string }) => s.type === 'det')
+    expect(detSegs).toHaveLength(1)
+    expect(detSegs[0].masked).toBe(false)
+    expect(detSegs[0].disabledDet).toBe(true)
+    expect(detSegs[0].text).toBe('test@mail.com')
+  })
+
+  it('keepPrefecture preserves prefecture in address mask', () => {
+    const dets = [makeDet('1', '東京都港区六本木1-2-3', 'address', 'address')]
+    const text = '住所: 東京都港区六本木1-2-3'
+    const result = __test__.buildAnnotations(text, dets, { showRedacted: true, keepPrefecture: true })
+    const detSegs = result.filter((s: { type: string }) => s.type === 'det')
+    expect(detSegs).toHaveLength(1)
+    expect(detSegs[0].masked).toBe(true)
+    expect(detSegs[0].text).toBe('東京都[住所詳細非公開]')
+  })
+
+  it('keepPrefecture falls back for non-prefecture address', () => {
+    const dets = [makeDet('1', '六本木1-2-3', 'address', 'address')]
+    const text = '住所: 六本木1-2-3'
+    const result = __test__.buildAnnotations(text, dets, { showRedacted: true, keepPrefecture: true })
+    const detSegs = result.filter((s: { type: string }) => s.type === 'det')
+    expect(detSegs).toHaveLength(1)
+    expect(detSegs[0].text).toBe('[住所非公開]')
+  })
+
+  it('nameInitial generates initials for katakana name', () => {
+    const dets = [makeDet('1', 'タナカ タロウ', 'name_dict', 'name')]
+    const text = '氏名: タナカ タロウ です'
+    const result = __test__.buildAnnotations(text, dets, { showRedacted: true, nameInitial: true })
+    const detSegs = result.filter((s: { type: string }) => s.type === 'det')
+    expect(detSegs).toHaveLength(1)
+    expect(detSegs[0].masked).toBe(true)
+    // Should be initials like "T.T." (not placeholder)
+    expect(detSegs[0].text).toMatch(/^[A-Z]\.[A-Z]\.$/)
+  })
+
+  it('nameInitial falls back to placeholder for non-name category', () => {
+    const dets = [makeDet('1', 'test@mail.com', 'email', 'contact')]
+    const text = '連絡先: test@mail.com'
+    const result = __test__.buildAnnotations(text, dets, { showRedacted: true, nameInitial: true })
+    const detSegs = result.filter((s: { type: string }) => s.type === 'det')
+    expect(detSegs).toHaveLength(1)
+    expect(detSegs[0].text).toBe('[メール非公開]')
+  })
+
+  it('multiple detections with length >= 2 all matched', () => {
+    const dets = [
+      makeDet('1', 'AB', 'email', 'contact'),
+      makeDet('2', 'CD', 'phone', 'contact'),
+    ]
+    const text = 'AB and CD end'
+    const result = __test__.buildAnnotations(text, dets, {})
+    const detSegs = result.filter((s: { type: string }) => s.type === 'det')
+    expect(detSegs).toHaveLength(2)
+    expect(detSegs[0].text).toBe('AB')
+    expect(detSegs[1].text).toBe('CD')
+  })
+
+  it('mixed enabled and disabled detections', () => {
+    const dets = [
+      makeDet('1', '田中太郎', 'name_dict', 'name', true),
+      makeDet('2', '090-1234-5678', 'phone', 'contact', false),
+    ]
+    const text = '氏名: 田中太郎\n電話: 090-1234-5678'
+    const result = __test__.buildAnnotations(text, dets, { showRedacted: true })
+    const detSegs = result.filter((s: { type: string }) => s.type === 'det')
+    expect(detSegs).toHaveLength(2)
+    // 有効な検出はマスク
+    expect(detSegs[0].masked).toBe(true)
+    expect(detSegs[0].text).toBe('[氏名非公開]')
+    // 無効な検出は元テキスト + disabledDet
+    expect(detSegs[1].masked).toBe(false)
+    expect(detSegs[1].disabledDet).toBe(true)
+    expect(detSegs[1].text).toBe('090-1234-5678')
+  })
 })
