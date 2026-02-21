@@ -7715,6 +7715,8 @@ export default function App(){
     const prov=await safeGet("rp_provider");if(prov)setSettings(p=>({...p,provider:prov}));
     const px=await safeGet("rp_proxy_url");if(px)setSettings(p=>({...p,proxyUrl:px}));
     const th=await safeGet("rp_theme");if(th)setIsDark(th!=="light");
+    const visited=await safeGet("rp_visited");
+    if(!visited){setShowHelp(true);await storage.set("rp_visited","1");}
   })();},[]);
   const curProv=AI_PROVIDERS.find(p=>p.id===settings.provider)||AI_PROVIDERS[0];
   const curModel=curProv.models.find(m=>m.id===settings.model)||curProv.models[0];
