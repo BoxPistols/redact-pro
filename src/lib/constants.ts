@@ -111,6 +111,7 @@ export const CATEGORIES: Record<string, CategoryMeta> = {
   personal: { label: '個人情報', color: C.purple, bg: C.purpleDim },
   web: { label: 'URL', color: C.cyan, bg: C.cyanDim },
   organization: { label: '組織名', color: '#8490A8', bg: 'rgba(132,144,168,0.1)' },
+  custom: { label: 'カスタム', color: '#E879A8', bg: 'rgba(232,121,168,0.1)' },
   photo: { label: '顔写真', color: C.red, bg: C.redDim },
 }
 
@@ -121,6 +122,7 @@ export const DEFAULT_MASK: Record<string, boolean> = {
   personal: true,
   web: true,
   organization: false,
+  custom: true,
   keepPrefecture: true,
   nameInitial: false,
 }

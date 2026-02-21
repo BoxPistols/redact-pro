@@ -1146,10 +1146,41 @@ export function detectJapaneseNames(text: string): Detection[] {
   return r
 }
 
+// ═══ Custom Keyword Detection ═══
+export function detectCustomKeywords(text: string, keywords: string[]): Detection[] {
+  const r: Detection[] = []
+  const seen = new Set<string>()
+  for (const kw of keywords) {
+    if (!kw || kw.length < 1) continue
+    let idx = 0
+    while (true) {
+      const p = text.indexOf(kw, idx)
+      if (p === -1) break
+      const k = `custom:${kw}`
+      if (!seen.has(k)) {
+        seen.add(k)
+        r.push({
+          id: `ck_${p}`,
+          type: 'custom_keyword',
+          label: 'カスタム指定',
+          category: 'custom',
+          value: kw,
+          source: 'regex',
+          confidence: 1.0,
+          enabled: true,
+        })
+      }
+      idx = p + kw.length
+    }
+  }
+  return r
+}
+
 // ═══ Combined Detection ═══
-export function detectAll(text: string): Detection[] {
+export function detectAll(text: string, customKeywords?: string[]): Detection[] {
   const nt = normalizeText(text)
-  const all = [...detectRegex(nt), ...detectJapaneseNames(nt)]
+  const ckw = customKeywords?.length ? detectCustomKeywords(nt, customKeywords) : []
+  const all = [...detectRegex(nt), ...detectJapaneseNames(nt), ...ckw]
   const seen = new Set<string>()
   return all.filter((d) => {
     const k = `${d.category}:${d.value}`

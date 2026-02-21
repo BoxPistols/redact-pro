@@ -639,9 +639,20 @@ ${truncated}`
     }
 }
 
-function detectAll(text){
+function detectCustomKeywords(text,keywords){
+  const r=[];const seen=new Set();
+  for(const kw of keywords){
+    if(!kw||kw.length<1)continue;
+    let idx=0;
+    while(true){const p=text.indexOf(kw,idx);if(p===-1)break;const k=`custom:${kw}`;if(!seen.has(k)){seen.add(k);r.push({id:`ck_${p}`,type:"custom_keyword",label:"カスタム指定",category:"custom",value:kw,source:"regex",confidence:1.0,enabled:true});}idx=p+kw.length;}
+  }
+  return r;
+}
+
+function detectAll(text,customKeywords){
   const nt=normalizeText(text);
-  const all=[...detectRegex(nt),...detectJapaneseNames(nt)];
+  const ckw=customKeywords?.length?detectCustomKeywords(nt,customKeywords):[];
+  const all=[...detectRegex(nt),...detectJapaneseNames(nt),...ckw];
   const seen=new Set();
   return all.filter(d=>{const k=`${d.category}:${d.value}`;if(seen.has(k))return false;seen.add(k);return true;});
 }
@@ -657,8 +668,8 @@ function mergeDetections(base, aiResults){
 }
 
 // ═══ Redaction ═══
-const PH={email:"[メール非公開]",url:"[URL非公開]",phone:"[電話番号非公開]",postal:"[郵便番号非公開]",birthday:"[年月日非公開]",address:"[住所非公開]",name_label:"[氏名非公開]",name_dict:"[氏名非公開]",name_context:"[氏名非公開]",name_ai:"[氏名非公開]",name_kana:"[氏名非公開]",sns_ai:"[SNS非公開]",sns_twitter:"[Twitter/X非公開]",sns_github:"[GitHub非公開]",sns_linkedin:"[LinkedIn非公開]",sns_instagram:"[Instagram非公開]",sns_facebook:"[Facebook非公開]",mynumber:"[番号非公開]",ner_person:"[氏名非公開]",ner_org:"[組織名非公開]",face:"[顔写真削除]"};
-const PH_RE=/\[(?:メール非公開|URL非公開|電話番号非公開|郵便番号非公開|年月日非公開|生年月日非公開|住所非公開|住所詳細非公開|氏名非公開|番号非公開|SNS非公開|Twitter\/X非公開|GitHub非公開|LinkedIn非公開|Instagram非公開|Facebook非公開|地名非公開|場所非公開|組織名非公開|日付非公開|国名非公開|顔写真削除|非公開|Name Redacted|Email Redacted|Phone Redacted|Address Redacted|DOB Redacted|URL Redacted)\]/g;
+const PH={email:"[メール非公開]",url:"[URL非公開]",phone:"[電話番号非公開]",postal:"[郵便番号非公開]",birthday:"[年月日非公開]",address:"[住所非公開]",name_label:"[氏名非公開]",name_dict:"[氏名非公開]",name_context:"[氏名非公開]",name_ai:"[氏名非公開]",name_kana:"[氏名非公開]",sns_ai:"[SNS非公開]",sns_twitter:"[Twitter/X非公開]",sns_github:"[GitHub非公開]",sns_linkedin:"[LinkedIn非公開]",sns_instagram:"[Instagram非公開]",sns_facebook:"[Facebook非公開]",mynumber:"[番号非公開]",ner_person:"[氏名非公開]",ner_org:"[組織名非公開]",custom_keyword:"[指定語非公開]",face:"[顔写真削除]"};
+const PH_RE=/\[(?:メール非公開|URL非公開|電話番号非公開|郵便番号非公開|年月日非公開|生年月日非公開|住所非公開|住所詳細非公開|氏名非公開|番号非公開|SNS非公開|Twitter\/X非公開|GitHub非公開|LinkedIn非公開|Instagram非公開|Facebook非公開|地名非公開|場所非公開|組織名非公開|日付非公開|国名非公開|顔写真削除|指定語非公開|非公開|Name Redacted|Email Redacted|Phone Redacted|Address Redacted|DOB Redacted|URL Redacted)\]/g;
 
 function applyRedaction(text,dets,opts){
   const keepPref=opts?.keepPrefecture||false;
@@ -1642,7 +1653,7 @@ async function aiReformat(redactedText,instruction,apiKey,model){
 function fileTimestamp(){const d=new Date();return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}_${String(d.getHours()).padStart(2,"0")}${String(d.getMinutes()).padStart(2,"0")}`;}
 
 // ═══ Batch processing: standalone file processor ═══
-async function processFileEntry(file,maskConfig,settings,callbacks){
+async function processFileEntry(file,maskConfig,settings,callbacks,customKeywords){
   const {onStage,onProgress,signal}=callbacks||{};
   const aiOn=settings?.aiDetect!==false;
   const runModels=aiOn?getModelsForRun(settings):null;
@@ -1686,7 +1697,7 @@ async function processFileEntry(file,maskConfig,settings,callbacks){
   // Stage 4: regex + dictionary detection
   if(signal?.aborted)throw new DOMException("Aborted","AbortError");
   onStage?.("PII検出中...");
-  const dets=detectAll(workText);
+  const dets=detectAll(workText,customKeywords);
   onProgress?.(70);
 
   // Stage 5: AI PII detection
@@ -4585,6 +4596,7 @@ function formatDuration(ms){
 // ═══ Upload Screen ═══
 function UploadScreen({onAnalyze,onSubmitBatch,settings}){
   const[dragOver,setDragOver]=useState(false);const[loading,setLoading]=useState(false);const[error,setError]=useState(null);const[fileName,setFileName]=useState("");const[stage,setStage]=useState(0);const[mask,setMask]=useState({...DEFAULT_MASK});const inputRef=useRef(null);
+  const[customKeywords,setCustomKeywords]=useState([]);const[customInput,setCustomInput]=useState("");
   const[aiStatus,setAiStatus]=useState("");
   const[elapsedMs,setElapsedMs]=useState(0);
   const startAtRef=useRef(0);
@@ -4624,6 +4636,9 @@ function UploadScreen({onAnalyze,onSubmitBatch,settings}){
     },250);
     return()=>clearInterval(id);
   },[loading]);
+
+  useEffect(()=>{(async()=>{try{const v=await safeGet("rp_custom_keywords");if(v){const parsed=JSON.parse(v);if(Array.isArray(parsed))setCustomKeywords(parsed);}}catch(e){}})();},[]);
+  useEffect(()=>{if(customKeywords.length>0)storage.set("rp_custom_keywords",JSON.stringify(customKeywords));else storage.set("rp_custom_keywords","");},[customKeywords]);
 
   const processText=useCallback(async(text,name,format,pageCount,fileSize,rawText,sparsePages,pdfData)=>{
     let workText=text;
@@ -4685,7 +4700,7 @@ function UploadScreen({onAnalyze,onSubmitBatch,settings}){
     setStage(aiOn?4:2);
     await new Promise(r=>setTimeout(r,80));
     setStage(aiOn?5:3);
-    const dets=detectAll(workText);
+    const dets=detectAll(workText,customKeywords);
 
     // AI PII detection step
     let allDets=dets;
@@ -4729,7 +4744,7 @@ function UploadScreen({onAnalyze,onSubmitBatch,settings}){
       const analysisMs=startAtRef.current?Date.now()-startAtRef.current:0;
       onAnalyze({file_name:name,file_format:format,page_count:pageCount,text_preview:workText.slice(0,8000),fullText:workText,rawText:originalRaw,sparsePageCount:sparsePages?.length||0,detections:wm,stats:{total:wm.length,regex:wm.filter(d=>d.source==="regex").length,dict:wm.filter(d=>d.source==="dict").length,ai:wm.filter(d=>d.source==="ai").length,heuristic:wm.filter(d=>d.source==="heuristic").length},fileSize,isDemo:fileSize==="DEMO",analysis_ms:analysisMs,maskOpts:{keepPrefecture:!!mask.keepPrefecture,nameInitial:!!mask.nameInitial}});
     },200);
-  },[onAnalyze,mask,settings,aiOn]);
+  },[onAnalyze,mask,settings,aiOn,customKeywords]);
 
   const handleFile=useCallback(async(file)=>{if(!file)return;startAtRef.current=Date.now();setElapsedMs(0);setAiStatus("");setLoading(true);setError(null);setFileName(file.name);setStage(0);try{setStage(1);const p=await parseFile(file,(msg)=>setAiStatus(msg));await processText(p.text,file.name,p.format,p.pageCount,`${(file.size/1024).toFixed(1)} KB`,p.text,p.sparsePages,p.pdfData);}catch(e){setError(e.message);setLoading(false);}},[processText]);
   const handleDemo=useCallback(async(type)=>{const s=SAMPLES[type];if(!s)return;startAtRef.current=Date.now();setElapsedMs(0);setAiStatus("");setError(null);setLoading(true);setFileName(s.name);setStage(0);setTimeout(async()=>{setStage(1);setTimeout(async()=>{await processText(s.text,s.name,s.format,s.pageCount,"DEMO");},80);},80);},[processText]);
@@ -5240,6 +5255,39 @@ function UploadScreen({onAnalyze,onSubmitBatch,settings}){
                           </div>
                       </div>
                   </div>
+                  {/* カスタムキーワード */}
+                  <div style={{marginTop:12,padding:'10px 12px',borderRadius:10,background:T.bg,border:`1px solid ${T.border}`}}>
+                    <div style={{fontSize:12,fontWeight:600,color:T.text2,marginBottom:8}}>カスタムキーワード</div>
+                    <div style={{fontSize:11,color:T.text3,marginBottom:8}}>任意の文字列を指定してマスキング対象に追加</div>
+                    <div style={{display:'flex',gap:6,marginBottom:8}}>
+                      <input
+                        type="text"
+                        value={customInput}
+                        onChange={(e)=>setCustomInput(e.target.value)}
+                        onKeyDown={(e)=>{if(e.key==='Enter'&&customInput.trim()){e.preventDefault();const kw=customInput.trim();if(!customKeywords.includes(kw)){setCustomKeywords(p=>[...p,kw]);}setCustomInput("");}}}
+                        placeholder="マスクしたい文字列を入力"
+                        aria-label="カスタムキーワード入力"
+                        style={{flex:1,padding:'6px 10px',fontSize:12,borderRadius:6,border:`1px solid ${T.border}`,background:T.bg2||T.bg,color:T.text,outline:'none'}}
+                      />
+                      <button
+                        type="button"
+                        onClick={()=>{const kw=customInput.trim();if(kw&&!customKeywords.includes(kw)){setCustomKeywords(p=>[...p,kw]);}setCustomInput("");}}
+                        disabled={!customInput.trim()}
+                        style={{padding:'6px 12px',fontSize:12,fontWeight:600,borderRadius:6,border:'none',background:customInput.trim()?CATEGORIES.custom.color:'transparent',color:customInput.trim()?'#fff':T.text3,cursor:customInput.trim()?'pointer':'default',transition:'all .2s'}}
+                      >追加</button>
+                    </div>
+                    {customKeywords.length>0&&(
+                      <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+                        {customKeywords.map((kw,i)=>(
+                          <span key={i} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'3px 8px',fontSize:11,borderRadius:12,background:CATEGORIES.custom.bg,color:CATEGORIES.custom.color,border:`1px solid ${CATEGORIES.custom.color}20`}}>
+                            {kw}
+                            <button type="button" onClick={()=>setCustomKeywords(p=>p.filter((_,j)=>j!==i))} style={{background:'none',border:'none',color:CATEGORIES.custom.color,cursor:'pointer',padding:0,fontSize:13,lineHeight:1}} aria-label={`${kw}を削除`}>&times;</button>
+                          </span>
+                        ))}
+                        <button type="button" onClick={()=>setCustomKeywords([])} style={{fontSize:11,color:T.text3,background:'none',border:'none',cursor:'pointer',padding:'3px 6px'}}>全削除</button>
+                      </div>
+                    )}
+                  </div>
                   <div
                       style={{
                           marginTop: 10,
@@ -5365,7 +5413,7 @@ function UploadScreen({onAnalyze,onSubmitBatch,settings}){
                                       e.preventDefault()
                                       setDragOver(false)
                                       const fl=e.dataTransfer?.files;
-                                      if(fl&&fl.length>1&&onSubmitBatch){onSubmitBatch(Array.from(fl),mask);return;}
+                                      if(fl&&fl.length>1&&onSubmitBatch){onSubmitBatch(Array.from(fl),mask,customKeywords);return;}
                                       handleFile(fl?.[0]);
                                   }}
                                   style={{
@@ -5389,7 +5437,7 @@ function UploadScreen({onAnalyze,onSubmitBatch,settings}){
                                       accept='.pdf,.docx,.doc,.xlsx,.xls,.ods,.csv,.txt,.tsv,.md,.markdown,.html,.htm,.rtf,.json,.odt'
                                       onChange={(e) => {
                                           const fl=e.target.files;
-                                          if(fl&&fl.length>1&&onSubmitBatch){onSubmitBatch(Array.from(fl),mask);return;}
+                                          if(fl&&fl.length>1&&onSubmitBatch){onSubmitBatch(Array.from(fl),mask,customKeywords);return;}
                                           handleFile(fl?.[0]);
                                       }}
                                       style={{ display: 'none' }}
@@ -7734,7 +7782,7 @@ export default function App(){
     setBatchFiles(prev=>prev.map(f=>f.id===id?{...f,...updates}:f));
   },[]);
 
-  const handleBatchSubmit=useCallback(async(fileList,maskConfig)=>{
+  const handleBatchSubmit=useCallback(async(fileList,maskConfig,batchCustomKeywords)=>{
     const entries=fileList.map((file,i)=>({
       id:`bf_${Date.now()}_${i}`,file,fileName:file.name,
       status:'queued',progress:0,stage:'',error:null,data:null,
@@ -7758,7 +7806,7 @@ export default function App(){
           onProgress:(pct)=>setBatchFiles(prev=>prev.map(f=>f.id===entry.id?{...f,progress:pct}:f)),
           onStage:(s)=>setBatchFiles(prev=>prev.map(f=>f.id===entry.id?{...f,stage:s}:f)),
           signal:entry.abortController.signal,
-        });
+        },batchCustomKeywords);
         setBatchFiles(prev=>prev.map(f=>f.id===entry.id?{...f,status:'done',data:result,progress:100}:f));
         // Auto-select first done file
         setActiveFileIdx(prev=>{
@@ -7989,7 +8037,9 @@ export default function App(){
                     style={{display:'none'}}
                     onChange={(e)=>{
                       const fl=e.target.files;if(!fl||fl.length===0)return;
-                      handleBatchSubmit(Array.from(fl),activeFile?.data?.maskOpts||{});
+                      const ckStr=typeof window!=='undefined'?localStorage.getItem('rp_custom_keywords'):'';
+                      const ck=ckStr?JSON.parse(ckStr):[];
+                      handleBatchSubmit(Array.from(fl),activeFile?.data?.maskOpts||{},ck);
                     }}
                   />
                   <FileTabBar
