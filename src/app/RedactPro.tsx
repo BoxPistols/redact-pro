@@ -725,6 +725,9 @@ function buildAnnotations(text,dets,opts){
     .sort((a,b)=>(b.value?.length||0)-(a.value?.length||0));
   if(all.length===0)return [{type:"text",text}];
 
+  // nameInitial用のフリガナマップ構築
+  const readingMap=nameInit?buildReadingMap(text):null;
+
   // 全検出値のマッチ位置を一括収集（長い値優先で重複排除）
   const rawMatches=[];
   for(const d of all){
@@ -763,7 +766,7 @@ function buildAnnotations(text,dets,opts){
       const isAddrType=d.type==="address";
       let masked;
       if(isNameType&&nameInit){
-        masked=PH[d.type]||"[非公開]";
+        masked=nameToInitial(d.value,readingMap)||PH[d.type]||"[非公開]";
       }else if(isAddrType&&keepPref){
         const pref=extractPrefecture(d.value);
         masked=pref?(pref+"[住所詳細非公開]"):"[住所非公開]";
@@ -772,7 +775,8 @@ function buildAnnotations(text,dets,opts){
       }
       segments.push({type:"det",text:masked,original:d.value,det:d,masked:true});
     }else{
-      segments.push({type:"det",text:text.slice(m.s,m.e),det:d,masked:false});
+      // enabled:false または showRedacted:false → 元テキスト表示、disabledDetフラグ付与
+      segments.push({type:"det",text:text.slice(m.s,m.e),det:d,masked:false,disabledDet:!d.enabled});
     }
     cur=m.e;
   }
@@ -2765,12 +2769,17 @@ function A4PreviewPanel({text,detections,maskOpts,focusDetId,focusPulse,onFocusD
         </span>
       );
     }
+    // enabled:false の検出は点線下線で視覚的に区別
+    const disabledStyle=seg.disabledDet?{
+      borderBottom:`1.5px dashed ${meta.color}60`,
+      opacity:0.7,
+    }:{};
     return (
       <span key={`d${idx}`} data-det-id={d?.id}
         onClick={(e)=>{e.stopPropagation();onFocusDet&&onFocusDet(d?.id);}}
         style={{
           background:focused?`${meta.color}16`:"transparent",
-          borderRadius:3,cursor:"pointer",...anim,
+          borderRadius:3,cursor:"pointer",...anim,...disabledStyle,
         }}>
         {seg.text}
       </span>
