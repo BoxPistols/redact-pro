@@ -6472,6 +6472,9 @@ function EditorScreen({data,onReset,apiKey,model}){
     // localStorageにも保存
     try{const raw=localStorage.getItem("rp_custom_keywords");const arr=raw?JSON.parse(raw):[];if(!arr.includes(kw)){arr.push(kw);localStorage.setItem("rp_custom_keywords",JSON.stringify(arr));}}catch(e){}
   };
+  const[sideSettingsOpen,setSideSettingsOpen]=useState(true);
+  // アップロード画面のカスタムキーワードを引き継ぐ
+  useEffect(()=>{try{const raw=localStorage.getItem("rp_custom_keywords");if(!raw)return;const keywords=JSON.parse(raw);if(!Array.isArray(keywords)||!keywords.length)return;const text=data.fullText||data.text_preview;setDetections(prev=>{const add=[];for(const kw of keywords){if(!kw||!text.includes(kw))continue;if(prev.some(d=>d.type==="custom_keyword"&&d.value===kw))continue;add.push({id:`ck_load_${Date.now()}_${Math.random().toString(36).slice(2,6)}`,type:"custom_keyword",label:"カスタム指定",category:"custom",value:kw,source:"regex",confidence:1.0,enabled:true});}return add.length?[...prev,...add]:prev;});}catch(e){}},[]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggle=id=>setDetections(p=>p.map(d=>d.id===id?{...d,enabled:!d.enabled}:d));
   const setCatEnabled=(cat,en)=>setDetections(p=>p.map(d=>d.category===cat?{...d,enabled:en}:d));
@@ -6881,7 +6884,7 @@ function EditorScreen({data,onReset,apiKey,model}){
                               borderRadius: 8,
                           }}
                       >
-                          {editMode ? '編集中' : '編集'}
+                          {editMode ? '編集完了' : '編集'}
                       </Btn>
                       <div style={{width:1,height:20,background:T.border,marginLeft:4,marginRight:2,flexShrink:0}}/>
                       <div style={{display:'flex',gap:2,alignItems:'center'}}>
@@ -6931,24 +6934,6 @@ function EditorScreen({data,onReset,apiKey,model}){
                   <button title='すべての検出を無効にする' aria-label='すべての検出を無効にする' onClick={disableAll} style={{padding:"2px 8px",borderRadius:5,border:`1px solid ${T.border}`,background:"transparent",cursor:"pointer",fontSize:11,fontFamily:T.font,color:T.text3}}>全OFF</button>
               </div>
               )}
-              {/* カスタムキーワード追加 */}
-              <div style={{padding:'6px 12px',display:'flex',gap:4,alignItems:'center'}}>
-                <input
-                  type="text"
-                  value={editorCustomInput}
-                  onChange={(e)=>setEditorCustomInput(e.target.value)}
-                  onKeyDown={(e)=>{if(e.key==='Enter'&&editorCustomInput.trim()){e.preventDefault();addCustomKeyword(editorCustomInput.trim());setEditorCustomInput("");}}}
-                  placeholder="+ カスタムキーワード"
-                  aria-label="カスタムキーワード追加"
-                  style={{flex:1,padding:'4px 8px',fontSize:11,borderRadius:5,border:`1px solid ${T.border}`,background:'transparent',color:T.text,outline:'none',minWidth:0}}
-                />
-                <button
-                  type="button"
-                  onClick={()=>{if(editorCustomInput.trim()){addCustomKeyword(editorCustomInput.trim());setEditorCustomInput("");}}}
-                  disabled={!editorCustomInput.trim()}
-                  style={{padding:'4px 8px',fontSize:11,fontWeight:600,borderRadius:5,border:'none',background:editorCustomInput.trim()?CATEGORIES.custom.color:'transparent',color:editorCustomInput.trim()?'#fff':T.text3,cursor:editorCustomInput.trim()?'pointer':'default',transition:'all .2s',whiteSpace:'nowrap'}}
-                >追加</button>
-              </div>
               {showDiff ? (
                   <DiffView
                       original={data.text_preview}
@@ -7251,13 +7236,18 @@ function EditorScreen({data,onReset,apiKey,model}){
                       >&#x276F;</button>
                       </div>
                   </div>
+                  <div role="button" tabIndex={0} onClick={()=>setSideSettingsOpen(p=>!p)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setSideSettingsOpen(p=>!p);}}} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'4px 0',cursor:'pointer',userSelect:'none'}}>
+                      <span style={{fontSize:12,fontWeight:600,color:T.text2}}>マスキング設定</span>
+                      <span style={{fontSize:9,color:T.text3,transition:'transform .2s',transform:sideSettingsOpen?'rotate(90deg)':'rotate(0deg)',display:'inline-block'}}>▶</span>
+                  </div>
+                  {sideSettingsOpen && (<>
                   <div style={{ marginBottom: 12 }}>
                       <div
                           style={{
-                              fontSize: 12,
+                              fontSize: 11,
                               fontWeight: 600,
                               color: T.text3,
-                              marginBottom: 8,
+                              marginBottom: 6,
                               letterSpacing: 0.3,
                           }}
                       >
@@ -7434,6 +7424,24 @@ function EditorScreen({data,onReset,apiKey,model}){
                           全OFF
                       </Btn>
                   </div>
+                  <div style={{marginTop:8}}>
+                      <div style={{fontSize:11,fontWeight:600,color:T.text3,marginBottom:4,letterSpacing:0.3}}>カスタムキーワード</div>
+                      <div style={{display:'flex',gap:4,alignItems:'center',marginBottom:4}}>
+                          <input type="text" value={editorCustomInput} onChange={(e)=>setEditorCustomInput(e.target.value)} onKeyDown={(e)=>{if(e.key==='Enter'&&editorCustomInput.trim()){e.preventDefault();addCustomKeyword(editorCustomInput.trim());setEditorCustomInput("");}}} placeholder="キーワードを入力" aria-label="カスタムキーワード追加" style={{flex:1,padding:'4px 8px',fontSize:11,borderRadius:5,border:`1px solid ${T.border}`,background:'transparent',color:T.text,outline:'none',minWidth:0}}/>
+                          <button type="button" onClick={()=>{if(editorCustomInput.trim()){addCustomKeyword(editorCustomInput.trim());setEditorCustomInput("");}}} disabled={!editorCustomInput.trim()} style={{padding:'4px 8px',fontSize:11,fontWeight:600,borderRadius:5,border:'none',background:editorCustomInput.trim()?CATEGORIES.custom.color:'transparent',color:editorCustomInput.trim()?'#fff':T.text3,cursor:editorCustomInput.trim()?'pointer':'default',transition:'all .2s',whiteSpace:'nowrap'}}>追加</button>
+                      </div>
+                      {detections.filter(d=>d.type==="custom_keyword").length>0&&(
+                          <div style={{display:'flex',flexWrap:'wrap',gap:3}}>
+                              {detections.filter(d=>d.type==="custom_keyword").map(d=>(
+                                  <span key={d.id} style={{display:'inline-flex',alignItems:'center',gap:3,padding:'1px 7px',borderRadius:4,fontSize:10,background:d.enabled?`${CATEGORIES.custom.color}18`:'transparent',color:d.enabled?CATEGORIES.custom.color:T.text3,border:`1px solid ${d.enabled?`${CATEGORIES.custom.color}30`:T.border}`,cursor:'pointer',transition:'all .15s'}} onClick={()=>toggle(d.id)} title={d.enabled?'クリックで無効':'クリックで有効'}>
+                                      {d.value}
+                                      <span style={{fontSize:8,opacity:0.7}}>{d.enabled?'●':'○'}</span>
+                                  </span>
+                              ))}
+                          </div>
+                      )}
+                  </div>
+                  </>)}
               </div>
               <div style={{ flex: 1, overflow: 'auto', padding: '6px 12px' }}>
                   {filtered.length === 0 ? (
