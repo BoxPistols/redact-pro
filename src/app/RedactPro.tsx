@@ -6460,6 +6460,19 @@ function EditorScreen({data,onReset,apiKey,model}){
   },[previewVisible,sidebarCollapsed,leftPct,rightPct]);
   const hasRawText=data.rawText&&data.rawText!==data.fullText&&data.rawText!==data.text_preview;
 
+  const[editorCustomInput,setEditorCustomInput]=useState("");
+  const addCustomKeyword=(kw)=>{
+    if(!kw||kw.length<1)return;
+    const text=data.fullText||data.text_preview;
+    if(!text.includes(kw))return;
+    const exists=detections.some(d=>d.type==="custom_keyword"&&d.value===kw);
+    if(exists)return;
+    const newDet={id:`ck_ed_${Date.now()}`,type:"custom_keyword",label:"カスタム指定",category:"custom",value:kw,source:"regex",confidence:1.0,enabled:true};
+    setDetections(p=>[...p,newDet]);
+    // localStorageにも保存
+    try{const raw=localStorage.getItem("rp_custom_keywords");const arr=raw?JSON.parse(raw):[];if(!arr.includes(kw)){arr.push(kw);localStorage.setItem("rp_custom_keywords",JSON.stringify(arr));}}catch(e){}
+  };
+
   const toggle=id=>setDetections(p=>p.map(d=>d.id===id?{...d,enabled:!d.enabled}:d));
   const setCatEnabled=(cat,en)=>setDetections(p=>p.map(d=>d.category===cat?{...d,enabled:en}:d));
   const enableAll=()=>setDetections(p=>p.map(d=>({...d,enabled:true})));
@@ -6918,6 +6931,24 @@ function EditorScreen({data,onReset,apiKey,model}){
                   <button title='すべての検出を無効にする' aria-label='すべての検出を無効にする' onClick={disableAll} style={{padding:"2px 8px",borderRadius:5,border:`1px solid ${T.border}`,background:"transparent",cursor:"pointer",fontSize:11,fontFamily:T.font,color:T.text3}}>全OFF</button>
               </div>
               )}
+              {/* カスタムキーワード追加 */}
+              <div style={{padding:'6px 12px',display:'flex',gap:4,alignItems:'center'}}>
+                <input
+                  type="text"
+                  value={editorCustomInput}
+                  onChange={(e)=>setEditorCustomInput(e.target.value)}
+                  onKeyDown={(e)=>{if(e.key==='Enter'&&editorCustomInput.trim()){e.preventDefault();addCustomKeyword(editorCustomInput.trim());setEditorCustomInput("");}}}
+                  placeholder="+ カスタムキーワード"
+                  aria-label="カスタムキーワード追加"
+                  style={{flex:1,padding:'4px 8px',fontSize:11,borderRadius:5,border:`1px solid ${T.border}`,background:'transparent',color:T.text,outline:'none',minWidth:0}}
+                />
+                <button
+                  type="button"
+                  onClick={()=>{if(editorCustomInput.trim()){addCustomKeyword(editorCustomInput.trim());setEditorCustomInput("");}}}
+                  disabled={!editorCustomInput.trim()}
+                  style={{padding:'4px 8px',fontSize:11,fontWeight:600,borderRadius:5,border:'none',background:editorCustomInput.trim()?CATEGORIES.custom.color:'transparent',color:editorCustomInput.trim()?'#fff':T.text3,cursor:editorCustomInput.trim()?'pointer':'default',transition:'all .2s',whiteSpace:'nowrap'}}
+                >追加</button>
+              </div>
               {showDiff ? (
                   <DiffView
                       original={data.text_preview}
