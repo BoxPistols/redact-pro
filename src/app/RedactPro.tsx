@@ -1638,6 +1638,82 @@ async function aiReformat(redactedText,instruction,apiKey,model){
 // ═══ Export helpers ═══
 function fileTimestamp(){const d=new Date();return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}_${String(d.getHours()).padStart(2,"0")}${String(d.getMinutes()).padStart(2,"0")}`;}
 
+// ═══ Batch processing: standalone file processor ═══
+async function processFileEntry(file,maskConfig,settings,callbacks){
+  const {onStage,onProgress,signal}=callbacks||{};
+  const aiOn=settings?.aiDetect!==false;
+  const runModels=aiOn?getModelsForRun(settings):null;
+  const startAt=Date.now();
+  let workText,originalRaw,format,pageCount,sparsePages,pdfData;
+
+  // Stage 1: parse
+  onStage?.("テキスト抽出中...");onProgress?.(5);
+  if(signal?.aborted)throw new DOMException("Aborted","AbortError");
+  const p=await parseFile(file,(msg)=>onStage?.(msg));
+  workText=p.text;originalRaw=p.text;format=p.format;pageCount=p.pageCount;sparsePages=p.sparsePages;pdfData=p.pdfData;
+  onProgress?.(20);
+
+  // Stage 2: OCR for image-heavy PDF
+  if(aiOn&&format==="PDF"&&sparsePages?.length>0){
+    if(signal?.aborted)throw new DOMException("Aborted","AbortError");
+    onStage?.(`OCR対象: ${sparsePages.length}/${pageCount||"?"}ページ`);
+    try{
+      const ocrResults=await ocrSparsePages(pdfData,sparsePages,settings?.apiKey,runModels?.formatModel||settings?.model,(msg)=>onStage?.(msg));
+      if(Object.keys(ocrResults).length>0){originalRaw=workText;workText=mergeOcrResults(workText,ocrResults);}
+    }catch(e){onStage?.(`OCRエラー: ${e.message||"不明"}`);}
+  }
+  onProgress?.(40);
+
+  // Stage 3: AI text cleanup for PDFs
+  if(aiOn&&format==="PDF"){
+    if(signal?.aborted)throw new DOMException("Aborted","AbortError");
+    onStage?.("AIテキスト再構成中...");
+    try{
+      const cleaned=await aiCleanupText(workText,settings?.apiKey,runModels?.formatModel||settings?.model,(msg)=>onStage?.(msg),runModels?.formatFallbackModel);
+      const origNonEmpty=workText.split("\n").filter(l=>l.trim().length>0).length;
+      const cleanNonEmpty=cleaned?cleaned.split("\n").filter(l=>l.trim().length>0).length:0;
+      if(cleaned&&cleanNonEmpty>=origNonEmpty*0.5&&cleaned.length>workText.length*0.4){
+        if(!originalRaw||originalRaw===workText)originalRaw=workText;
+        workText=cleaned;
+      }
+    }catch(e){}
+  }
+  onProgress?.(55);
+
+  // Stage 4: regex + dictionary detection
+  if(signal?.aborted)throw new DOMException("Aborted","AbortError");
+  onStage?.("PII検出中...");
+  const dets=detectAll(workText);
+  onProgress?.(70);
+
+  // Stage 5: AI PII detection
+  let allDets=dets;
+  if(aiOn){
+    if(signal?.aborted)throw new DOMException("Aborted","AbortError");
+    onStage?.(`AI PII検出中... (${runModels?.detectModel||settings?.model})`);
+    try{
+      const aiRes=await detectWithAI(workText,settings?.apiKey,runModels?.detectModel||settings?.model,runModels?.detectFallbackModel,(msg)=>onStage?.(msg));
+      const aiDets=aiRes?.detections||[];
+      if(aiDets.length>0)allDets=mergeDetections(dets,aiDets);
+    }catch(e){}
+  }
+  onProgress?.(90);
+
+  // Stage 6: apply mask config
+  const wm=allDets.map(d=>({...d,enabled:maskConfig[d.category]!==false}));
+  const analysisMs=Date.now()-startAt;
+  onProgress?.(100);
+
+  return {
+    file_name:file.name,file_format:format,page_count:pageCount,
+    text_preview:workText.slice(0,8000),fullText:workText,rawText:originalRaw,
+    sparsePageCount:sparsePages?.length||0,detections:wm,
+    stats:{total:wm.length,regex:wm.filter(d=>d.source==="regex").length,dict:wm.filter(d=>d.source==="dict").length,ai:wm.filter(d=>d.source==="ai").length,heuristic:wm.filter(d=>d.source==="heuristic").length},
+    fileSize:`${(file.size/1024).toFixed(1)} KB`,isDemo:false,analysis_ms:analysisMs,
+    maskOpts:{keepPrefecture:!!maskConfig.keepPrefecture,nameInitial:!!maskConfig.nameInitial},
+  };
+}
+
 // ═══ Export generators ═══
 function generateExport(rawContent,format,baseName){
   const bom="\uFEFF",ts=new Date().toLocaleString("ja-JP");
@@ -1733,6 +1809,96 @@ function LayoutIcon({cols,active,color}){
           opacity:active?0.7:0.25,
         }}/>
       ))}
+    </div>
+  );
+}
+
+// ═══ File Tab Bar (Batch mode) ═══
+function FileTabBar({files,activeIdx,onSelect,onRemove,onBatchExport,onAddFiles}){
+  const doneCount=files.filter(f=>f.status==='done').length;
+  const processingFile=files.find(f=>f.status==='processing');
+  return (
+    <div style={{
+      display:'flex',alignItems:'center',gap:0,
+      borderBottom:`1px solid ${T.border}`,background:T.bg2,
+      height:38,paddingLeft:8,paddingRight:8,overflow:'hidden',
+    }}>
+      <div style={{display:'flex',gap:2,flex:1,overflow:'auto',alignItems:'center',paddingRight:8}}>
+        {files.map((f,i)=>{
+          const active=i===activeIdx;
+          const statusDot=f.status==='done'?T.green:f.status==='error'?T.red:f.status==='processing'?T.amber:T.text3;
+          return (
+            <button key={f.id} onClick={()=>onSelect(i)}
+              title={`${f.fileName} (${f.status==='done'?'完了':f.status==='processing'?f.stage||'処理中':f.status==='error'?'エラー':f.status==='cancelled'?'キャンセル':'待機中'})`}
+              style={{
+                display:'flex',alignItems:'center',gap:5,
+                padding:'4px 10px',borderRadius:'6px 6px 0 0',fontSize:12,fontFamily:T.font,
+                border:'none',cursor:'pointer',whiteSpace:'nowrap',maxWidth:180,
+                background:active?T.bg:'transparent',
+                borderBottom:active?`2px solid ${T.accent}`:'2px solid transparent',
+                color:active?T.text:T.text3,fontWeight:active?600:400,
+                textDecoration:f.status==='cancelled'?'line-through':'none',
+                position:'relative',overflow:'hidden',
+              }}>
+              <span style={{width:7,height:7,borderRadius:'50%',background:statusDot,flexShrink:0}}/>
+              <span style={{overflow:'hidden',textOverflow:'ellipsis'}}>{f.fileName}</span>
+              {f.status==='processing'&&(
+                <span style={{position:'absolute',bottom:0,left:0,height:2,background:`linear-gradient(90deg,${T.accent},${C.purple})`,
+                  width:`${f.progress||0}%`,transition:'width .3s',borderRadius:1}}/>
+              )}
+            </button>
+          );
+        })}
+        <button onClick={onAddFiles} title="ファイルを追加" style={{
+          width:24,height:24,borderRadius:6,border:`1px dashed ${T.border}`,background:'transparent',
+          cursor:'pointer',color:T.text3,fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',
+          flexShrink:0,fontFamily:T.font,
+        }}>+</button>
+      </div>
+      {files.length>0&&(
+        <div style={{display:'flex',gap:6,alignItems:'center',flexShrink:0,paddingLeft:8,borderLeft:`1px solid ${T.border}`}}>
+          <span style={{fontSize:11,color:T.text3}}>{doneCount}/{files.length}</span>
+          <Btn onClick={onBatchExport} disabled={doneCount===0}
+            title="全ファイルのマスキング結果をZIPで一括ダウンロード"
+            style={{padding:'4px 10px',fontSize:11,borderRadius:6,opacity:doneCount===0?0.4:1}}>
+            ZIP出力
+          </Btn>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══ Batch Processing View ═══
+function BatchProcessingView({file}){
+  return (
+    <div style={{
+      display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
+      height:'calc(100vh - 90px)',gap:16,fontFamily:T.font,
+    }}>
+      <div style={{width:48,height:48,border:`3px solid ${T.border}`,borderTopColor:T.accent,borderRadius:'50%',
+        animation:'rp-spin 1s linear infinite'}}/>
+      <div style={{fontSize:16,fontWeight:600,color:T.text}}>{file.fileName}</div>
+      <div style={{fontSize:13,color:T.text3}}>{file.stage||'処理待機中...'}</div>
+      <div style={{width:240,height:6,borderRadius:3,background:T.surfaceAlt,overflow:'hidden'}}>
+        <div style={{height:'100%',borderRadius:3,background:`linear-gradient(90deg,${T.accent},${C.purple})`,
+          width:`${file.progress||0}%`,transition:'width .3s'}}/>
+      </div>
+      <div style={{fontSize:11,color:T.text3}}>{file.progress||0}%</div>
+    </div>
+  );
+}
+
+function BatchErrorView({file,onRetry}){
+  return (
+    <div style={{
+      display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
+      height:'calc(100vh - 90px)',gap:12,fontFamily:T.font,
+    }}>
+      <div style={{width:48,height:48,borderRadius:'50%',background:T.redDim,display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,color:T.red}}>!</div>
+      <div style={{fontSize:16,fontWeight:600,color:T.text}}>{file.fileName}</div>
+      <div style={{fontSize:13,color:T.red}}>{file.error||'処理中にエラーが発生しました'}</div>
+      {onRetry&&<Btn onClick={onRetry} style={{padding:'6px 16px',fontSize:12,borderRadius:8}}>再試行</Btn>}
     </div>
   );
 }
@@ -4191,7 +4357,7 @@ function formatDuration(ms){
 }
 
 // ═══ Upload Screen ═══
-function UploadScreen({onAnalyze,settings}){
+function UploadScreen({onAnalyze,onSubmitBatch,settings}){
   const[dragOver,setDragOver]=useState(false);const[loading,setLoading]=useState(false);const[error,setError]=useState(null);const[fileName,setFileName]=useState("");const[stage,setStage]=useState(0);const[mask,setMask]=useState({...DEFAULT_MASK});const inputRef=useRef(null);
   const[aiStatus,setAiStatus]=useState("");
   const[elapsedMs,setElapsedMs]=useState(0);
@@ -4972,7 +5138,9 @@ function UploadScreen({onAnalyze,settings}){
                                   onDrop={(e) => {
                                       e.preventDefault()
                                       setDragOver(false)
-                                      handleFile(e.dataTransfer?.files?.[0])
+                                      const fl=e.dataTransfer?.files;
+                                      if(fl&&fl.length>1&&onSubmitBatch){onSubmitBatch(Array.from(fl),mask);return;}
+                                      handleFile(fl?.[0]);
                                   }}
                                   style={{
                                       padding: '44px 32px',
@@ -4990,10 +5158,13 @@ function UploadScreen({onAnalyze,settings}){
                                   <input
                                       ref={inputRef}
                                       type='file'
+                                      multiple
                                       accept='.pdf,.docx,.doc,.xlsx,.xls,.ods,.csv,.txt,.tsv,.md,.markdown,.html,.htm,.rtf,.json,.odt'
-                                      onChange={(e) =>
-                                          handleFile(e.target.files?.[0])
-                                      }
+                                      onChange={(e) => {
+                                          const fl=e.target.files;
+                                          if(fl&&fl.length>1&&onSubmitBatch){onSubmitBatch(Array.from(fl),mask);return;}
+                                          handleFile(fl?.[0]);
+                                      }}
                                       style={{ display: 'none' }}
                                   />
                                   <svg
@@ -7271,6 +7442,9 @@ function EditorScreen({data,onReset,apiKey,model}){
 // ═══ App ═══
 export default function App(){
   const[data,setData]=useState(null);
+  const[batchFiles,setBatchFiles]=useState([]);
+  const[activeFileIdx,setActiveFileIdx]=useState(0);
+  const batchAddRef=useRef(null);
   const[showSettings,setShowSettings]=useState(false);
   const[isDark,setIsDark]=useState(true);
   const [settings, setSettings] = useState({
@@ -7295,12 +7469,94 @@ export default function App(){
   const curProv=AI_PROVIDERS.find(p=>p.id===settings.provider)||AI_PROVIDERS[0];
   const curModel=curProv.models.find(m=>m.id===settings.model)||curProv.models[0];
   const goHome=useCallback(()=>{
+    // Abort all in-progress batch processing
+    for(const f of batchFiles)f.abortController?.abort();
     if(typeof window!=="undefined"){
       window.location.assign("./");
       return;
     }
-    setData(null);
+    setData(null);setBatchFiles([]);setActiveFileIdx(0);
+  },[batchFiles]);
+
+  const updateBatchFile=useCallback((id,updates)=>{
+    setBatchFiles(prev=>prev.map(f=>f.id===id?{...f,...updates}:f));
   },[]);
+
+  const handleBatchSubmit=useCallback(async(fileList,maskConfig)=>{
+    const entries=fileList.map((file,i)=>({
+      id:`bf_${Date.now()}_${i}`,file,fileName:file.name,
+      status:'queued',progress:0,stage:'',error:null,data:null,
+      abortController:new AbortController(),
+    }));
+    setBatchFiles(entries);setActiveFileIdx(0);
+    // Process sequentially
+    for(let i=0;i<entries.length;i++){
+      const entry=entries[i];
+      if(entry.abortController.signal.aborted)continue;
+      setBatchFiles(prev=>prev.map(f=>f.id===entry.id?{...f,status:'processing',progress:0}:f));
+      // Auto-select first processing file
+      setActiveFileIdx(prev=>{
+        const currentFiles=entries;
+        const currentActive=currentFiles[prev];
+        if(!currentActive||currentActive.status==='queued')return i;
+        return prev;
+      });
+      try{
+        const result=await processFileEntry(entry.file,maskConfig,settings,{
+          onProgress:(pct)=>setBatchFiles(prev=>prev.map(f=>f.id===entry.id?{...f,progress:pct}:f)),
+          onStage:(s)=>setBatchFiles(prev=>prev.map(f=>f.id===entry.id?{...f,stage:s}:f)),
+          signal:entry.abortController.signal,
+        });
+        setBatchFiles(prev=>prev.map(f=>f.id===entry.id?{...f,status:'done',data:result,progress:100}:f));
+        // Auto-select first done file
+        setActiveFileIdx(prev=>{
+          const bf=entries;
+          if(bf[prev]?.status!=='done'&&bf[prev]?.id!==entry.id)return i;
+          return prev;
+        });
+      }catch(e){
+        if(e.name==='AbortError'){
+          setBatchFiles(prev=>prev.map(f=>f.id===entry.id?{...f,status:'cancelled'}:f));
+        }else{
+          setBatchFiles(prev=>prev.map(f=>f.id===entry.id?{...f,status:'error',error:e.message}:f));
+        }
+      }
+      // Rate limit delay between files
+      if(i<entries.length-1&&settings?.aiDetect!==false)await new Promise(r=>setTimeout(r,500));
+    }
+  },[settings]);
+
+  const handleBatchExport=useCallback(async()=>{
+    const JSZip=(await import('jszip')).default;
+    const zip=new JSZip();
+    for(const f of batchFiles){
+      if(f.status!=='done'||!f.data)continue;
+      const redacted=applyRedaction(
+        f.data.fullText||f.data.text_preview,
+        f.data.detections.filter(d=>d.enabled),
+        f.data.maskOpts
+      );
+      const base=f.data.file_name.replace(/\.[^.]+$/,'')+`_redacted`;
+      zip.file(`${base}.txt`,redacted);
+      zip.file(`${base}.html`,generatePDFHTML(redacted,'gothic'));
+    }
+    // Summary CSV
+    const header='ファイル名,形式,検出数,マスク数,処理時間(ms)\n';
+    const rows=batchFiles.filter(f=>f.status==='done'&&f.data).map(f=>{
+      const d=f.data;
+      return `${d.file_name},${d.file_format},${d.stats.total},${d.detections.filter(x=>x.enabled).length},${d.analysis_ms}`;
+    }).join('\n');
+    zip.file('batch_summary.csv','\uFEFF'+header+rows);
+    const blob=await zip.generateAsync({type:'blob'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+    a.download=`redacted_batch_${fileTimestamp()}.zip`;
+    document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(a.href);
+  },[batchFiles]);
+
+  const handleBatchAddFiles=useCallback(()=>{batchAddRef.current?.click();},[]);
+
+  const batchMode=batchFiles.length>0;
+  const activeFile=batchFiles[activeFileIdx];
 
   return (
       <div
@@ -7375,10 +7631,11 @@ export default function App(){
                       className='rp-header-badges'
                       style={{ display: 'flex', gap: 8, alignItems: 'center' }}
                   >
-                      {data && (
+                      {(data||batchMode) && (
                           <Badge color={C.accent} bg={C.accentDim}>
-                              {data.detections.filter((d) => d.enabled).length}{' '}
-                              件
+                              {batchMode
+                                ? `${batchFiles.reduce((s,f)=>s+(f.data?.detections?.filter(d=>d.enabled).length||0),0)} 件 (${batchFiles.filter(f=>f.status==='done').length}/${batchFiles.length})`
+                                : `${data.detections.filter((d) => d.enabled).length} 件`}
                           </Badge>
                       )}
                       {settings.aiDetect && (
@@ -7449,7 +7706,38 @@ export default function App(){
                   </button>
               </div>
           </header>
-          {data ? (
+          {batchMode ? (
+              <>
+                  <input ref={batchAddRef} type="file" multiple
+                    accept=".pdf,.docx,.doc,.xlsx,.xls,.ods,.csv,.txt,.tsv,.md,.markdown,.html,.htm,.rtf,.json,.odt"
+                    style={{display:'none'}}
+                    onChange={(e)=>{
+                      const fl=e.target.files;if(!fl||fl.length===0)return;
+                      handleBatchSubmit(Array.from(fl),activeFile?.data?.maskOpts||{});
+                    }}
+                  />
+                  <FileTabBar
+                    files={batchFiles} activeIdx={activeFileIdx}
+                    onSelect={setActiveFileIdx}
+                    onRemove={(i)=>{
+                      batchFiles[i]?.abortController?.abort();
+                      setBatchFiles(prev=>{const n=[...prev];n.splice(i,1);return n;});
+                      if(activeFileIdx>=batchFiles.length-1)setActiveFileIdx(Math.max(0,batchFiles.length-2));
+                    }}
+                    onBatchExport={handleBatchExport}
+                    onAddFiles={handleBatchAddFiles}
+                  />
+                  {activeFile?.status==='done'&&activeFile.data ? (
+                    <EditorScreen key={activeFile.id} data={activeFile.data} onReset={goHome} apiKey={settings.apiKey} model={settings.model}/>
+                  ) : activeFile?.status==='processing' ? (
+                    <BatchProcessingView file={activeFile}/>
+                  ) : activeFile?.status==='error' ? (
+                    <BatchErrorView file={activeFile}/>
+                  ) : activeFile?.status==='queued' ? (
+                    <BatchProcessingView file={{...activeFile,stage:'処理待機中...'}}/>
+                  ) : null}
+              </>
+          ) : data ? (
               <EditorScreen
                   data={data}
                   onReset={goHome}
@@ -7457,7 +7745,7 @@ export default function App(){
                   model={settings.model}
               />
           ) : (
-              <UploadScreen onAnalyze={setData} settings={settings} />
+              <UploadScreen onAnalyze={setData} onSubmitBatch={handleBatchSubmit} settings={settings} />
           )}
           {showSettings && (
               <SettingsModal
