@@ -5945,10 +5945,11 @@ function EditorScreen({data,onReset,apiKey,model}){
   const[editedText,setEditedText]=useState(null);
   const[previewVisible,setPreviewVisible]=useState(true);
   const[previewFontType,setPreviewFontType]=useState("gothic");
-  // Draggable panel widths (percentages)
+  // Draggable panel widths (percentages of total width)
   const[leftPct,setLeftPct]=useState(null);
-  const[centerPct,setCenterPct]=useState(null);
-  const dragRef=useRef(null);
+  const[rightPct,setRightPct]=useState(null);
+  // Reset drag sizes when layout changes
+  useEffect(()=>{setLeftPct(null);setRightPct(null);},[previewVisible,sidebarCollapsed]);
   const hasRawText=data.rawText&&data.rawText!==data.fullText&&data.rawText!==data.text_preview;
 
   const toggle=id=>setDetections(p=>p.map(d=>d.id===id?{...d,enabled:!d.enabled}:d));
@@ -6031,21 +6032,21 @@ function EditorScreen({data,onReset,apiKey,model}){
     if(!wrap)return;
     const totalW=wrap.getBoundingClientRect().width;
     const startX=e.clientX;
-    const panels=wrap.querySelectorAll(':scope > .rp-editor-left, :scope > .rp-editor-center, :scope > .rp-editor-right');
     const leftEl=wrap.querySelector('.rp-editor-left');
-    const centerEl=wrap.querySelector('.rp-editor-center');
     const rightEl=wrap.querySelector('.rp-editor-right');
     const initLeftW=leftEl?leftEl.getBoundingClientRect().width:0;
-    const initCenterW=centerEl?centerEl.getBoundingClientRect().width:0;
+    const initRightW=rightEl?rightEl.getBoundingClientRect().width:0;
 
     const onMove=(ev)=>{
       const dx=ev.clientX-startX;
       if(divider==='left'){
-        const newLeft=Math.max(200,Math.min(totalW*0.7,initLeftW+dx));
+        // Left divider: resize left panel, center fills remaining
+        const newLeft=Math.max(160,Math.min(totalW*0.65,initLeftW+dx));
         setLeftPct((newLeft/totalW)*100);
       }else{
-        const newCenter=Math.max(200,Math.min(totalW*0.5,initCenterW+dx));
-        setCenterPct((newCenter/totalW)*100);
+        // Right divider: drag left = sidebar wider, drag right = sidebar narrower
+        const newRight=Math.max(200,Math.min(totalW*0.55,initRightW-dx));
+        setRightPct((newRight/totalW)*100);
       }
     };
     const onUp=()=>{
@@ -6084,6 +6085,7 @@ function EditorScreen({data,onReset,apiKey,model}){
                   display: 'flex',
                   flexDirection: 'column',
                   minWidth: 0,
+                  minHeight: 0,
                   transition: leftPct ? 'none' : 'flex .2s',
               }}
           >
@@ -6462,9 +6464,8 @@ function EditorScreen({data,onReset,apiKey,model}){
           {/* Center: A4 Preview Panel (always visible) */}
           {previewVisible ? (
               <div className="rp-editor-center" style={{
-                  flex:centerPct?`0 0 ${centerPct}%`:"1 1 32%",minWidth:200,maxWidth:600,display:"flex",flexDirection:"column",
-                  background:"#e5e7eb",
-                  transition:centerPct?"none":"flex .2s",overflow:"hidden",
+                  flex:"1 1 0%",minWidth:200,display:"flex",flexDirection:"column",
+                  background:"#e5e7eb",minHeight:0,
               }}>
                   {/* Preview toolbar */}
                   <div style={{
@@ -6582,13 +6583,13 @@ function EditorScreen({data,onReset,apiKey,model}){
           <div
               className='rp-editor-right'
               style={{
-                  flex: previewVisible ? '0 0 260px' : '1 1 44%',
+                  flex: rightPct ? `0 0 ${rightPct}%` : previewVisible ? '0 0 260px' : '1 1 44%',
                   display: sidebarCollapsed?'none':'flex',
                   flexDirection: 'column',
                   minWidth: 200,
                   maxWidth: previewVisible ? 400 : 480,
                   background: T.bg2,
-                  transition: 'flex .2s, max-width .2s',
+                  transition: rightPct ? 'none' : 'flex .2s, max-width .2s',
               }}
           >
               <div
