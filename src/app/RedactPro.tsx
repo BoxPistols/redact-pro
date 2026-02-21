@@ -2739,7 +2739,7 @@ strong{font-weight:700}
 }
 
 // ═══ A4 Preview (inline) ═══
-function A4PreviewPanel({text,detections,maskOpts,focusDetId,focusPulse,onFocusDet,zoom=0.62}){
+function A4PreviewPanel({text,detections,maskOpts,focusDetId,focusPulse,onFocusDet,zoom=1}){
   const segments=useMemo(()=>{
     return buildAnnotations(text,detections,{
       showRedacted:true,
@@ -3316,6 +3316,7 @@ function DesignExportModal({text,apiKey,model,onClose,baseName:baseNameProp}){
                       >
                           <iframe
                               srcDoc={htmlContent}
+                              sandbox="allow-same-origin"
                               style={{
                                   width: '100%',
                                   minHeight: 842,
@@ -3410,6 +3411,7 @@ pre{background:#f1f5f9;padding:12px 16px;border-radius:6px;overflow-x:auto;font-
 </style></head><body>${body}</body></html>`;
     }
     if(fmt==="csv"){
+      // Note: simple split — quoted fields with commas are not handled (preview-only)
       const rows=displayContent.split("\n").map(r=>r.split(","));
       let table="<table><thead><tr>";
       if(rows.length>0)rows[0].forEach(c=>{table+=`<th>${esc(c.trim())}</th>`;});
@@ -3642,6 +3644,7 @@ h4{font-size:10.5pt;font-weight:700;margin:12px 0 4px}
                           {(fmt==="csv"||fmt==="xlsx") ? (
                               <iframe
                                   srcDoc={layoutHtml}
+                                  sandbox="allow-same-origin"
                                   style={{
                                       width: '100%',
                                       minHeight: 400,
@@ -3666,6 +3669,7 @@ h4{font-size:10.5pt;font-weight:700;margin:12px 0 4px}
                               }}>
                                   <iframe
                                       srcDoc={layoutHtml}
+                                      sandbox="allow-same-origin"
                                       style={{ width: '100%', minHeight: 600, border: 'none' }}
                                       title='TextPreview'
                                       onLoad={(e) => {
@@ -3692,6 +3696,7 @@ h4{font-size:10.5pt;font-weight:700;margin:12px 0 4px}
                           >
                               <iframe
                                   srcDoc={layoutHtml}
+                                  sandbox="allow-same-origin"
                                   style={{
                                       width: '100%',
                                       minHeight: 842,
@@ -5972,7 +5977,7 @@ function EditorScreen({data,onReset,apiKey,model}){
   const[editedText,setEditedText]=useState(null);
   const[previewVisible,setPreviewVisible]=useState(true);
   const[previewFontType,setPreviewFontType]=useState("gothic");
-  const[previewZoom,setPreviewZoom]=useState(0.62);
+  const[previewZoom,setPreviewZoom]=useState(1);
   // Draggable panel widths (percentages of total width)
   const[leftPct,setLeftPct]=useState(null);
   const[rightPct,setRightPct]=useState(null);
@@ -6561,7 +6566,7 @@ function EditorScreen({data,onReset,apiKey,model}){
                               style={{width:22,height:22,borderRadius:4,border:`1px solid ${T.border}`,background:"transparent",color:T.text2,cursor:"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:T.font}}>
                               &minus;
                           </button>
-                          <button onClick={()=>setPreviewZoom(0.62)} title="ズームをリセット"
+                          <button onClick={()=>setPreviewZoom(1)} title="ズームをリセット"
                               style={{padding:"2px 6px",borderRadius:4,border:`1px solid ${T.border}`,background:"transparent",color:T.text3,cursor:"pointer",fontSize:10,fontFamily:T.mono,fontWeight:600,minWidth:40,textAlign:"center"}}>
                               {Math.round(previewZoom*100)}%
                           </button>
@@ -6599,6 +6604,7 @@ function EditorScreen({data,onReset,apiKey,model}){
                           <div style={{width:595,minHeight:842,background:"#fff",boxShadow:"0 4px 24px rgba(0,0,0,.12)",borderRadius:4,transform:`scale(${previewZoom})`,transformOrigin:"top center"}}>
                               <iframe
                                   srcDoc={previewHtml}
+                                  sandbox="allow-same-origin"
                                   style={{width:"100%",minHeight:842,border:"none",pointerEvents:"none"}}
                                   title="A4 Preview"
                                   onLoad={(e)=>{try{const h=e.target.contentDocument?.documentElement?.scrollHeight;if(h&&h>842)e.target.style.height=h+"px";}catch(ex){}}}
