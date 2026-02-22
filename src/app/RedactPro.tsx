@@ -1970,11 +1970,9 @@ const CHAT_FAQ=[
 
 function ChatWidget(){
   const[open,setOpen]=useState(false);
-  const[messages,setMessages]=useState([{type:'bot',text:'こんにちは！RedactProのサポートです。\nカテゴリを選んでください。'}]);
-  const[nav,setNav]=useState({level:'top',categoryIdx:null});
+  const[messages,setMessages]=useState([{type:'bot',text:'こんにちは！RedactProのサポートです。\n質問を選んでください。'}]);
   const scrollRef=useRef(null);
   const[size,setSize]=useState({w:420,h:560});
-  const dragRef=useRef(null);
 
   useEffect(()=>{
     if(!open)return;
@@ -2001,26 +1999,8 @@ function ChatWidget(){
     document.addEventListener('mouseup',onUp);
   },[size]);
 
-  const addBot=(text)=>setMessages(prev=>[...prev,{type:'bot',text}]);
-  const addUser=(text)=>setMessages(prev=>[...prev,{type:'user',text}]);
-
-  const selectCategory=(idx)=>{
-    const cat=CHAT_FAQ[idx];
-    addUser(cat.category);
-    setNav({level:'questions',categoryIdx:idx});
-    addBot(`「${cat.category}」の質問を選んでください。`);
-  };
-
-  const selectQuestion=(qIdx)=>{
-    const cat=CHAT_FAQ[nav.categoryIdx];
-    const item=cat.questions[qIdx];
-    addUser(item.q);
-    addBot(item.a);
-  };
-
-  const goBack=()=>{
-    setNav({level:'top',categoryIdx:null});
-    addBot('他にご質問はありますか？カテゴリを選んでください。');
+  const selectQuestion=(q,a)=>{
+    setMessages(prev=>[...prev,{type:'user',text:q},{type:'bot',text:a}]);
   };
 
   const chatBtnSvg=(
@@ -2130,27 +2110,19 @@ function ChatWidget(){
 
           {/* Options */}
           <div style={{
-            padding:'12px 16px',
+            padding:'8px 16px 12px',
             borderTop:`1px solid ${T.border}`,
-            maxHeight:160,overflowY:'auto',
+            overflowY:'auto',minHeight:80,maxHeight:220,
           }}>
-            {nav.level==='top'&&CHAT_FAQ.map((cat,i)=>(
-              <button
-                key={i}
-                onClick={()=>selectCategory(i)}
-                onMouseEnter={e=>e.currentTarget.style.background=T.bg2}
-                onMouseLeave={e=>e.currentTarget.style.background=T.surface}
-                style={optionBtnStyle}
-              >
-                {cat.category}
-              </button>
-            ))}
-            {nav.level==='questions'&&(
-              <>
-                {CHAT_FAQ[nav.categoryIdx].questions.map((item,i)=>(
+            {CHAT_FAQ.map((cat,ci)=>(
+              <div key={ci}>
+                <div style={{fontSize:11,fontWeight:700,color:T.text3,padding:'6px 0 3px',textTransform:'uppercase',letterSpacing:'.5px'}}>
+                  {cat.category}
+                </div>
+                {cat.questions.map((item,qi)=>(
                   <button
-                    key={i}
-                    onClick={()=>selectQuestion(i)}
+                    key={qi}
+                    onClick={()=>selectQuestion(item.q,item.a)}
                     onMouseEnter={e=>e.currentTarget.style.background=T.bg2}
                     onMouseLeave={e=>e.currentTarget.style.background=T.surface}
                     style={optionBtnStyle}
@@ -2158,16 +2130,8 @@ function ChatWidget(){
                     {item.q}
                   </button>
                 ))}
-                <button
-                  onClick={goBack}
-                  onMouseEnter={e=>e.currentTarget.style.background=T.bg2}
-                  onMouseLeave={e=>e.currentTarget.style.background=T.surface}
-                  style={{...optionBtnStyle,color:C.accent,fontWeight:600}}
-                >
-                  ← カテゴリに戻る
-                </button>
-              </>
-            )}
+              </div>
+            ))}
           </div>
         </div>
       )}
