@@ -6467,7 +6467,7 @@ function EditorScreen({data,onReset,apiKey,model}){
     if(!text.includes(kw))return;
     const exists=detections.some(d=>d.type==="custom_keyword"&&d.value===kw);
     if(exists)return;
-    const newDet={id:`ck_ed_${Date.now()}`,type:"custom_keyword",label:"カスタム指定",category:"custom",value:kw,source:"regex",confidence:1.0,enabled:true};
+    const newDet={id:`ck_ed_${Date.now()}_${Math.random().toString(36).slice(2,6)}`,type:"custom_keyword",label:"カスタム指定",category:"custom",value:kw,source:"regex",confidence:1.0,enabled:true};
     setDetections(p=>[...p,newDet]);
     // localStorageにも保存
     try{const raw=localStorage.getItem("rp_custom_keywords");const arr=raw?JSON.parse(raw):[];if(!arr.includes(kw)){arr.push(kw);localStorage.setItem("rp_custom_keywords",JSON.stringify(arr));}}catch(e){}
@@ -7432,16 +7432,16 @@ function EditorScreen({data,onReset,apiKey,model}){
                           <input type="text" value={editorCustomInput} onChange={(e)=>setEditorCustomInput(e.target.value)} onKeyDown={(e)=>{if(e.key==='Enter'&&editorCustomInput.trim()){e.preventDefault();addCustomKeyword(editorCustomInput.trim());setEditorCustomInput("");}}} placeholder="+ カスタムキーワード追加" aria-label="カスタムキーワード追加" style={{flex:1,padding:'5px 10px',fontSize:12,borderRadius:6,border:`1px solid ${T.border}`,background:'transparent',color:T.text,outline:'none',minWidth:0}}/>
                           <button type="button" onClick={()=>{if(editorCustomInput.trim()){addCustomKeyword(editorCustomInput.trim());setEditorCustomInput("");}}} disabled={!editorCustomInput.trim()} style={{padding:'5px 12px',fontSize:11,fontWeight:600,borderRadius:6,border:'none',background:editorCustomInput.trim()?CATEGORIES.custom.color:'transparent',color:editorCustomInput.trim()?'#fff':T.text3,cursor:editorCustomInput.trim()?'pointer':'default',transition:'all .2s',whiteSpace:'nowrap'}}>追加</button>
                       </div>
-                      {detections.filter(d=>d.type==="custom_keyword").length>0&&(
+                      {(()=>{const ckws=detections.filter(d=>d.type==="custom_keyword");return ckws.length>0?(
                           <div style={{display:'flex',flexWrap:'wrap',gap:3}}>
-                              {detections.filter(d=>d.type==="custom_keyword").map(d=>(
+                              {ckws.map(d=>(
                                   <span key={d.id} style={{display:'inline-flex',alignItems:'center',gap:3,padding:'2px 8px',borderRadius:4,fontSize:10,background:d.enabled?`${CATEGORIES.custom.color}18`:'transparent',color:d.enabled?CATEGORIES.custom.color:T.text3,border:`1px solid ${d.enabled?`${CATEGORIES.custom.color}30`:T.border}`,cursor:'pointer',transition:'all .15s'}} onClick={()=>toggle(d.id)} title={d.enabled?'クリックで無効':'クリックで有効'}>
                                       {d.value}
                                       <span style={{fontSize:8,opacity:0.7}}>{d.enabled?'●':'○'}</span>
                                   </span>
                               ))}
                           </div>
-                      )}
+                      ):null})()}
                   </div>
               </div>
               <div style={{ flex: 1, overflow: 'auto', padding: '6px 12px' }}>
