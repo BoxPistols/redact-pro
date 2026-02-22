@@ -1990,7 +1990,7 @@ function ChatWidget(){
     const startX=e.clientX,startY=e.clientY;
     const startW=size.w,startH=size.h;
     const onMove=(ev)=>{
-      const newW=Math.max(280,Math.min(600,startW+(ev.clientX-startX)));
+      const newW=Math.max(280,Math.min(600,startW-(ev.clientX-startX)));
       const newH=Math.max(320,Math.min(800,startH-(ev.clientY-startY)));
       setSize({w:newW,h:newH});
     };
@@ -2030,7 +2030,7 @@ function ChatWidget(){
         onClick={()=>setOpen(v=>!v)}
         aria-label={open?'サポートチャットを閉じる':'サポートチャットを開く'}
         style={{
-          position:'fixed',left:16,bottom:16,zIndex:98,
+          position:'fixed',right:16,bottom:16,zIndex:98,
           width:48,height:48,borderRadius:'50%',border:'none',
           background:C.accent,color:'#fff',cursor:'pointer',
           display:'flex',alignItems:'center',justifyContent:'center',
@@ -2045,7 +2045,7 @@ function ChatWidget(){
       {/* Chat panel */}
       {open&&(
         <div style={{
-          position:'fixed',left:16,bottom:72,zIndex:98,
+          position:'fixed',right:16,bottom:72,zIndex:98,
           width:size.w,height:size.h,
           borderRadius:16,
           border:`1px solid ${T.border}`,
@@ -2055,18 +2055,18 @@ function ChatWidget(){
           animation:'fadeUp .2s ease',
           fontFamily:C.font,
         }}>
-          {/* Resize handle (top-right corner) */}
+          {/* Resize handle (top-left corner) */}
           <div
             onMouseDown={onResizeStart}
             style={{
-              position:'absolute',right:0,top:0,width:18,height:18,
-              cursor:'ne-resize',zIndex:1,borderRadius:'0 16px 0 0',
+              position:'absolute',left:0,top:0,width:18,height:18,
+              cursor:'nw-resize',zIndex:1,borderRadius:'16px 0 0 0',
             }}
             title='ドラッグでリサイズ'
           >
-            <svg width="10" height="10" viewBox="0 0 10 10" style={{position:'absolute',right:4,top:4,opacity:.4}}>
-              <line x1="0" y1="0" x2="10" y2="10" stroke={T.text2} strokeWidth="1.5"/>
-              <line x1="5" y1="0" x2="10" y2="5" stroke={T.text2} strokeWidth="1.5"/>
+            <svg width="10" height="10" viewBox="0 0 10 10" style={{position:'absolute',left:4,top:4,opacity:.4}}>
+              <line x1="0" y1="10" x2="10" y2="0" stroke={T.text2} strokeWidth="1.5"/>
+              <line x1="0" y1="5" x2="5" y2="0" stroke={T.text2} strokeWidth="1.5"/>
             </svg>
           </div>
           {/* Header */}
@@ -7837,7 +7837,7 @@ function EditorScreen({data,onReset,apiKey,model}){
               </div>
               <div
                   style={{
-                      padding: '10px 16px',
+                      padding: '10px 16px 70px',
                       borderTop: `1px solid ${T.border}`,
                       background: T.bg2,
                       display: 'flex',
