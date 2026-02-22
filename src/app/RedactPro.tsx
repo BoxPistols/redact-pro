@@ -2303,7 +2303,7 @@ function HelpModal({onClose}){
 }
 
 // ═══ Settings Modal ═══
-function SettingsModal({settings,onSave,onClose,isDark,setIsDark}){
+function SettingsModal({settings,onSave,onClose,isDark,setIsDark,isLite}){
   const trapRef=useFocusTrap();
   useEffect(()=>{const h=e=>{if(e.key==='Escape')onClose()};window.addEventListener('keydown',h);return()=>window.removeEventListener('keydown',h)},[onClose]);
   const [provider, setProvider] = useState(settings.provider || 'openai')
@@ -2526,7 +2526,7 @@ function SettingsModal({settings,onSave,onClose,isDark,setIsDark}){
                           size='sm'
                       />
                   </div>
-                  {/* Provider */}
+                  {!isLite && <>{/* Provider */}
                   <div>
                       <div
                           style={{
@@ -3004,7 +3004,7 @@ function SettingsModal({settings,onSave,onClose,isDark,setIsDark}){
                               がありません。対象URLを渡せないため正しく動作しません。
                           </div>
                       )}
-                  </div>
+                  </div></>}
                   <div
                       style={{
                           display: 'flex',
@@ -4788,7 +4788,7 @@ function formatDuration(ms){
 }
 
 // ═══ Upload Screen ═══
-function UploadScreen({onAnalyze,onSubmitBatch,settings}){
+function UploadScreen({onAnalyze,onSubmitBatch,settings,isLite}){
   const[dragOver,setDragOver]=useState(false);const[loading,setLoading]=useState(false);const[error,setError]=useState(null);const[fileName,setFileName]=useState("");const[stage,setStage]=useState(0);const[mask,setMask]=useState({...DEFAULT_MASK});const inputRef=useRef(null);
   const[customKeywords,setCustomKeywords]=useState([]);const[customInput,setCustomInput]=useState("");const kwLoadedRef=useRef(false);
   const[aiStatus,setAiStatus]=useState("");
@@ -4798,7 +4798,7 @@ function UploadScreen({onAnalyze,onSubmitBatch,settings}){
   const urlHelpTriggerRef = useRef(null)
   const urlHelpCloseRef = useRef(null)
   const activePreset=MASK_PRESETS.findIndex(p=>Object.entries(p.mask).every(([k,v])=>mask[k]===v));
-  const aiOn=settings?.aiDetect!==false;
+  const aiOn=isLite?false:settings?.aiDetect!==false;
   const STAGES=["ファイル読み込み","テキスト抽出",aiOn?"AI OCR (画像ページ)":"--",aiOn?"AI テキスト再構成":"--","正規表現マッチ","日本人名辞書照合",aiOn?"AI PII検出":"--","完了"];
   const lc=[null,T.green,T.amber,T.red];
   const closeUrlHelp = useCallback(() => {
@@ -5450,7 +5450,7 @@ function UploadScreen({onAnalyze,onSubmitBatch,settings}){
                       </div>
                   </div>
                   {/* カスタムキーワード */}
-                  <div style={{marginTop:12,padding:'10px 12px',borderRadius:10,background:T.bg,border:`1px solid ${T.border}`}}>
+                  {!isLite && <div style={{marginTop:12,padding:'10px 12px',borderRadius:10,background:T.bg,border:`1px solid ${T.border}`}}>
                     <div style={{fontSize:12,fontWeight:600,color:T.text2,marginBottom:8}}>カスタムキーワード</div>
                     <div style={{fontSize:11,color:T.text3,marginBottom:8}}>任意の文字列を指定してマスキング対象に追加</div>
                     <div style={{display:'flex',gap:6,marginBottom:8}}>
@@ -5481,7 +5481,7 @@ function UploadScreen({onAnalyze,onSubmitBatch,settings}){
                         <button type="button" onClick={()=>setCustomKeywords([])} style={{fontSize:11,color:T.text3,background:'none',border:'none',cursor:'pointer',padding:'3px 6px'}}>全削除</button>
                       </div>
                     )}
-                  </div>
+                  </div>}
                   <div
                       style={{
                           marginTop: 10,
@@ -5541,7 +5541,7 @@ function UploadScreen({onAnalyze,onSubmitBatch,settings}){
                                   icon: '\u{1F4C1}',
                                   label: 'ファイル',
                               },
-                              {
+                              ...(!isLite?[{
                                   id: 'url',
                                   icon: '\u{1F310}',
                                   label: 'URLスクレイピング',
@@ -5550,7 +5550,7 @@ function UploadScreen({onAnalyze,onSubmitBatch,settings}){
                                   id: 'paste',
                                   icon: '\u{1F4CB}',
                                   label: 'テキスト/HTML貼付',
-                              },
+                              }]:[]),
                           ].map((tab) => (
                               <button
                                   key={tab.id}
@@ -5607,7 +5607,7 @@ function UploadScreen({onAnalyze,onSubmitBatch,settings}){
                                       e.preventDefault()
                                       setDragOver(false)
                                       const fl=e.dataTransfer?.files;
-                                      if(fl&&fl.length>1&&onSubmitBatch){onSubmitBatch(Array.from(fl),mask,customKeywords);return;}
+                                      if(!isLite&&fl&&fl.length>1&&onSubmitBatch){onSubmitBatch(Array.from(fl),mask,customKeywords);return;}
                                       handleFile(fl?.[0]);
                                   }}
                                   style={{
@@ -5631,7 +5631,7 @@ function UploadScreen({onAnalyze,onSubmitBatch,settings}){
                                       accept='.pdf,.docx,.doc,.xlsx,.xls,.ods,.csv,.txt,.tsv,.md,.markdown,.html,.htm,.rtf,.json,.odt'
                                       onChange={(e) => {
                                           const fl=e.target.files;
-                                          if(fl&&fl.length>1&&onSubmitBatch){onSubmitBatch(Array.from(fl),mask,customKeywords);return;}
+                                          if(!isLite&&fl&&fl.length>1&&onSubmitBatch){onSubmitBatch(Array.from(fl),mask,customKeywords);return;}
                                           handleFile(fl?.[0]);
                                       }}
                                       style={{ display: 'none' }}
@@ -6607,7 +6607,7 @@ function AIPanel({redactedText,apiKey,model,onApply,onClose}){
 }
 
 // ═══ Editor Screen ═══
-function EditorScreen({data,onReset,apiKey,model}){
+function EditorScreen({data,onReset,apiKey,model,isLite}){
   const [detections, setDetections] = useState(
       ensureUniqueDetectionIds(data.detections),
   )
@@ -7621,7 +7621,7 @@ function EditorScreen({data,onReset,apiKey,model}){
                       </Btn>
                   </div>
                   </>)}
-                  <div style={{marginTop:4,padding:'6px 0',borderTop:`1px solid ${T.border}`}}>
+                  {!isLite && <div style={{marginTop:4,padding:'6px 0',borderTop:`1px solid ${T.border}`}}>
                       <div style={{display:'flex',gap:4,alignItems:'center',marginBottom:4}}>
                           <input type="text" value={editorCustomInput} onChange={(e)=>setEditorCustomInput(e.target.value)} onKeyDown={(e)=>{if(e.key==='Enter'&&editorCustomInput.trim()){e.preventDefault();addCustomKeyword(editorCustomInput.trim());setEditorCustomInput("");}}} placeholder="+ カスタムキーワード追加" aria-label="カスタムキーワード追加" style={{flex:1,padding:'5px 10px',fontSize:12,borderRadius:6,border:`1px solid ${T.border}`,background:'transparent',color:T.text,outline:'none',minWidth:0}}/>
                           <button type="button" onClick={()=>{if(editorCustomInput.trim()){addCustomKeyword(editorCustomInput.trim());setEditorCustomInput("");}}} disabled={!editorCustomInput.trim()} style={{padding:'5px 12px',fontSize:11,fontWeight:600,borderRadius:6,border:'none',background:editorCustomInput.trim()?CATEGORIES.custom.color:'transparent',color:editorCustomInput.trim()?'#fff':T.text3,cursor:editorCustomInput.trim()?'pointer':'default',transition:'all .2s',whiteSpace:'nowrap'}}>追加</button>
@@ -7636,7 +7636,7 @@ function EditorScreen({data,onReset,apiKey,model}){
                               ))}
                           </div>
                       ):null})()}
-                  </div>
+                  </div>}
               </div>
               <div style={{ flex: 1, overflow: 'auto', padding: '6px 12px' }}>
                   {filtered.length === 0 ? (
@@ -7842,7 +7842,7 @@ function EditorScreen({data,onReset,apiKey,model}){
                       gap: 7,
                   }}
               >
-                  <Btn
+                  {!isLite && <Btn
                       title='AIでテキストを再整形'
                       onClick={() => setShowAI(true)}
                       style={{
@@ -7853,8 +7853,8 @@ function EditorScreen({data,onReset,apiKey,model}){
                       }}
                   >
                       AI で再フォーマット
-                  </Btn>
-                  <Btn
+                  </Btn>}
+                  {!isLite && <Btn
                       title='PDF編集モードを開く'
                       onClick={() => {
                           if(!editMode){
@@ -7875,7 +7875,7 @@ function EditorScreen({data,onReset,apiKey,model}){
                       }}
                   >
                       {editMode ? '編集完了 / プレビューを閉じる' : 'PDF プレビュー・編集'}
-                  </Btn>
+                  </Btn>}
                   <div style={{ display: 'flex', gap: 8 }}>
                       <Btn
                           title='マスキング結果をプレビュー'
@@ -7910,7 +7910,7 @@ function EditorScreen({data,onReset,apiKey,model}){
                       </Btn>
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
-                      <Btn
+                      {!isLite && <Btn
                           title='検出結果の詳細レポートを表示'
                           variant='ghost'
                           onClick={() =>
@@ -7928,7 +7928,7 @@ function EditorScreen({data,onReset,apiKey,model}){
                           }}
                       >
                           検出レポート
-                      </Btn>
+                      </Btn>}
                       <Btn
                           title='ファイル選択画面に戻る'
                           variant='ghost'
@@ -7988,6 +7988,9 @@ export default function App(){
   const batchAddRef=useRef(null);
   const[showSettings,setShowSettings]=useState(false);
   const[showHelp,setShowHelp]=useState(false);
+  const[edition,setEdition]=useState(()=>{try{return localStorage.getItem('rp_edition')||'lite'}catch{return'lite'}});
+  const isLite=edition==='lite';
+  const toggleEdition=useCallback(()=>{const next=edition==='lite'?'pro':'lite';setEdition(next);try{localStorage.setItem('rp_edition',next)}catch{}},[edition]);
   const[isDark,setIsDark]=useState(true);
   const [settings, setSettings] = useState({
       apiKey: '',
@@ -8169,6 +8172,18 @@ export default function App(){
                   <Badge color={T.text3} bg={T.surfaceAlt}>
                       v0.9
                   </Badge>
+                  <div style={{display:'flex',borderRadius:6,overflow:'hidden',border:`1px solid ${T.border}`,fontSize:11,fontWeight:600}}>
+                      {['lite','pro'].map(ed=>(
+                        <button key={ed} onClick={()=>{setEdition(ed);try{localStorage.setItem('rp_edition',ed)}catch{}}} style={{
+                          padding:'3px 10px',border:'none',cursor:'pointer',
+                          background:edition===ed?C.accent:'transparent',
+                          color:edition===ed?'#fff':T.text2,
+                          transition:'background .15s',
+                        }}>
+                          {ed==='lite'?'Lite':'Pro'}
+                        </button>
+                      ))}
+                  </div>
               </nav>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <div
@@ -8182,7 +8197,7 @@ export default function App(){
                                 : `${data.detections.filter((d) => d.enabled).length} 件`}
                           </Badge>
                       )}
-                      {settings.aiDetect && (
+                      {!isLite && settings.aiDetect && (
                           <Badge color={C.purple} bg={C.purpleDim}>
                               AI
                           </Badge>
@@ -8274,7 +8289,7 @@ export default function App(){
               </div>
           </header>
           <main style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
-          {batchMode ? (
+          {(!isLite && batchMode) ? (
               <>
                   <input aria-label="バッチファイル追加" ref={batchAddRef} type="file" multiple
                     accept=".pdf,.docx,.doc,.xlsx,.xls,.ods,.csv,.txt,.tsv,.md,.markdown,.html,.htm,.rtf,.json,.odt"
@@ -8312,9 +8327,10 @@ export default function App(){
                   onReset={goHome}
                   apiKey={settings.apiKey}
                   model={settings.model}
+                  isLite={isLite}
               />
           ) : (
-              <UploadScreen onAnalyze={setData} onSubmitBatch={handleBatchSubmit} settings={settings} />
+              <UploadScreen onAnalyze={setData} onSubmitBatch={handleBatchSubmit} settings={settings} isLite={isLite} />
           )}
           </main>
           {showSettings && (
@@ -8324,12 +8340,13 @@ export default function App(){
                   onClose={() => setShowSettings(false)}
                   isDark={isDark}
                   setIsDark={setIsDark}
+                  isLite={isLite}
               />
           )}
           {showHelp && (
               <HelpModal onClose={() => setShowHelp(false)} />
           )}
-          <ChatWidget />
+          {!isLite && <ChatWidget />}
       </div>
   )
 }
