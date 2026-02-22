@@ -1942,6 +1942,209 @@ function useFocusTrap(active=true){
   return ref;
 }
 
+// ═══ Chat Widget ═══
+const CHAT_FAQ=[
+  {category:'基本操作',questions:[
+    {q:'どんなファイルに対応？',a:'PDF, Word(.docx), Excel(.xlsx), CSV, Markdown, HTML, RTF, JSON, ODT, テキストの10形式に対応しています。'},
+    {q:'テキスト貼り付けはできる？',a:'はい。初期画面の「テキスト入力」タブでテキストを直接貼り付けて処理できます。'},
+    {q:'URLからテキスト取得できる？',a:'はい。初期画面の「URL」タブでWebページのURLを入力するとテキストを自動取得します。'},
+  ]},
+  {category:'検出・マスキング',questions:[
+    {q:'何を検出できる？',a:'氏名、電話番号、メール、住所、生年月日、マイナンバー、URL、SNSアカウント、組織名の9カテゴリを自動検出します。'},
+    {q:'マスクプリセットとは？',a:'基本（氏名+連絡先）/ 標準（+住所・日付・URL）/ 厳格（組織名含む全項目）の3段階から選べます。'},
+    {q:'カスタムキーワードとは？',a:'任意の文字列を指定してマスキング対象に追加できます。初期画面・エディター画面どちらからでも設定可能です。'},
+  ]},
+  {category:'AI機能',questions:[
+    {q:'AI機能を使うには？',a:'設定（⚙）からAPIキーを入力しAIをONにしてください。Claude, OpenAI, Geminiに対応しています。'},
+    {q:'AIで何ができる？',a:'AI PII検出（正規表現では困難な個人情報検出）、テキスト再フォーマット、画像OCRの3機能があります。'},
+  ]},
+  {category:'エクスポート',questions:[
+    {q:'どの形式で出力できる？',a:'Text, Markdown, CSV, Excel, PDF（印刷）, Word の6形式で出力できます。'},
+    {q:'PDF編集モードとは？',a:'マスキング結果をMarkdown記法で編集し、A4プレビューで確認してPDF印刷・Word出力できます。'},
+  ]},
+  {category:'その他',questions:[
+    {q:'データはどこに保存される？',a:'全てブラウザ内で処理されます。サーバーにデータは送信されません（AI使用時のみAPIに送信）。'},
+    {q:'ダークモード切替は？',a:'ヘッダーの☀/🌙ボタンで切替できます。設定はブラウザに保存されます。'},
+  ]},
+];
+
+function ChatWidget(){
+  const[open,setOpen]=useState(false);
+  const[messages,setMessages]=useState([{type:'bot',text:'こんにちは！RedactProのサポートです。\nカテゴリを選んでください。'}]);
+  const[nav,setNav]=useState({level:'top',categoryIdx:null});
+  const scrollRef=useRef(null);
+
+  useEffect(()=>{
+    if(!open)return;
+    const h=e=>{if(e.key==='Escape')setOpen(false)};
+    window.addEventListener('keydown',h);
+    return()=>window.removeEventListener('keydown',h);
+  },[open]);
+
+  useEffect(()=>{
+    if(scrollRef.current)scrollRef.current.scrollTop=scrollRef.current.scrollHeight;
+  },[messages]);
+
+  const addBot=(text)=>setMessages(prev=>[...prev,{type:'bot',text}]);
+  const addUser=(text)=>setMessages(prev=>[...prev,{type:'user',text}]);
+
+  const selectCategory=(idx)=>{
+    const cat=CHAT_FAQ[idx];
+    addUser(cat.category);
+    setNav({level:'questions',categoryIdx:idx});
+    addBot(`「${cat.category}」の質問を選んでください。`);
+  };
+
+  const selectQuestion=(qIdx)=>{
+    const cat=CHAT_FAQ[nav.categoryIdx];
+    const item=cat.questions[qIdx];
+    addUser(item.q);
+    addBot(item.a);
+  };
+
+  const goBack=()=>{
+    setNav({level:'top',categoryIdx:null});
+    addBot('他にご質問はありますか？カテゴリを選んでください。');
+  };
+
+  const chatBtnSvg=(
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+    </svg>
+  );
+
+  const closeSvg=(
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+    </svg>
+  );
+
+  const optionBtnStyle={
+    display:'block',width:'100%',textAlign:'left',
+    padding:'8px 12px',marginBottom:4,borderRadius:8,
+    border:`1px solid ${T.border}`,background:T.surface,
+    color:T.text,fontSize:13,cursor:'pointer',
+    transition:'background .15s',
+  };
+
+  return(
+    <>
+      {/* Floating button */}
+      <button
+        onClick={()=>setOpen(v=>!v)}
+        aria-label={open?'サポートチャットを閉じる':'サポートチャットを開く'}
+        style={{
+          position:'fixed',right:16,bottom:16,zIndex:98,
+          width:56,height:56,borderRadius:'50%',border:'none',
+          background:C.accent,color:'#fff',cursor:'pointer',
+          display:'flex',alignItems:'center',justifyContent:'center',
+          boxShadow:'0 4px 12px rgba(0,0,0,.25)',
+          transition:'transform .2s',
+          transform:open?'rotate(90deg)':'rotate(0deg)',
+        }}
+      >
+        {open?closeSvg:chatBtnSvg}
+      </button>
+
+      {/* Chat panel */}
+      {open&&(
+        <div style={{
+          position:'fixed',right:16,bottom:80,zIndex:98,
+          width:360,maxHeight:480,
+          borderRadius:16,
+          border:`1px solid ${T.border}`,
+          background:T.bg,
+          boxShadow:'0 8px 32px rgba(0,0,0,.2)',
+          display:'flex',flexDirection:'column',
+          animation:'fadeUp .2s ease',
+          fontFamily:C.font,
+        }}>
+          {/* Header */}
+          <div style={{
+            padding:'14px 16px',
+            borderBottom:`1px solid ${T.border}`,
+            display:'flex',alignItems:'center',justifyContent:'space-between',
+            borderRadius:'16px 16px 0 0',
+            background:T.surface,
+          }}>
+            <span style={{fontWeight:700,fontSize:14,color:T.text}}>サポート</span>
+            <button
+              onClick={()=>setOpen(false)}
+              aria-label='閉じる'
+              style={{background:'none',border:'none',cursor:'pointer',color:T.text2,padding:4,display:'flex'}}
+            >
+              {closeSvg}
+            </button>
+          </div>
+
+          {/* Messages */}
+          <div ref={scrollRef} style={{
+            flex:1,overflowY:'auto',padding:16,
+            display:'flex',flexDirection:'column',gap:8,
+            maxHeight:300,
+          }}>
+            {messages.map((m,i)=>(
+              <div key={i} style={{
+                alignSelf:m.type==='user'?'flex-end':'flex-start',
+                maxWidth:'85%',
+                padding:'8px 12px',borderRadius:12,
+                background:m.type==='user'?C.accent:T.surfaceAlt,
+                color:m.type==='user'?'#fff':T.text,
+                fontSize:13,lineHeight:1.6,
+                whiteSpace:'pre-wrap',
+              }}>
+                {m.text}
+              </div>
+            ))}
+          </div>
+
+          {/* Options */}
+          <div style={{
+            padding:'12px 16px',
+            borderTop:`1px solid ${T.border}`,
+            maxHeight:160,overflowY:'auto',
+          }}>
+            {nav.level==='top'&&CHAT_FAQ.map((cat,i)=>(
+              <button
+                key={i}
+                onClick={()=>selectCategory(i)}
+                onMouseEnter={e=>e.currentTarget.style.background=T.bg2}
+                onMouseLeave={e=>e.currentTarget.style.background=T.surface}
+                style={optionBtnStyle}
+              >
+                {cat.category}
+              </button>
+            ))}
+            {nav.level==='questions'&&(
+              <>
+                {CHAT_FAQ[nav.categoryIdx].questions.map((item,i)=>(
+                  <button
+                    key={i}
+                    onClick={()=>selectQuestion(i)}
+                    onMouseEnter={e=>e.currentTarget.style.background=T.bg2}
+                    onMouseLeave={e=>e.currentTarget.style.background=T.surface}
+                    style={optionBtnStyle}
+                  >
+                    {item.q}
+                  </button>
+                ))}
+                <button
+                  onClick={goBack}
+                  onMouseEnter={e=>e.currentTarget.style.background=T.bg2}
+                  onMouseLeave={e=>e.currentTarget.style.background=T.surface}
+                  style={{...optionBtnStyle,color:C.accent,fontWeight:600}}
+                >
+                  ← カテゴリに戻る
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 // ═══ Help Modal ═══
 function HelpModal({onClose}){
   const trapRef=useFocusTrap();
@@ -8135,6 +8338,7 @@ export default function App(){
           {showHelp && (
               <HelpModal onClose={() => setShowHelp(false)} />
           )}
+          <ChatWidget />
       </div>
   )
 }
