@@ -1981,8 +1981,9 @@ function ChatWidget(){
     return()=>window.removeEventListener('keydown',h);
   },[open]);
 
+  const lastMsgRef=useRef(null);
   useEffect(()=>{
-    if(scrollRef.current)scrollRef.current.scrollTop=scrollRef.current.scrollHeight;
+    if(lastMsgRef.current)lastMsgRef.current.scrollIntoView({behavior:'smooth',block:'start'});
   },[messages]);
 
   const onResizeStart=useCallback((e)=>{
@@ -2095,7 +2096,7 @@ function ChatWidget(){
             minHeight:0,
           }}>
             {messages.map((m,i)=>(
-              <div key={i} style={{
+              <div key={i} ref={i===messages.length-1?lastMsgRef:null} style={{
                 alignSelf:m.type==='user'?'flex-end':'flex-start',
                 maxWidth:'85%',
                 padding:'8px 12px',borderRadius:12,
