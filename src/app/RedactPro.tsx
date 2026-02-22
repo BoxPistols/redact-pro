@@ -2090,9 +2090,9 @@ function ChatWidget(){
 
           {/* Messages */}
           <div ref={scrollRef} style={{
-            flex:1,overflowY:'auto',padding:16,
+            flex:'1 1 0',overflowY:'auto',padding:16,
             display:'flex',flexDirection:'column',gap:8,
-            minHeight:0,
+            minHeight:0,maxHeight:'calc(100% - 230px)',
           }}>
             {messages.map((m,i)=>(
               <div key={i} style={{
